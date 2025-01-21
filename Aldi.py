@@ -118,7 +118,8 @@ class AldiScraper:
         return pd.concat(results, ignore_index=True)
 
 def main():
-    categories = aldi_categories  # Add your categories here
+    
+    categories = ["aldi_categories"]  # Add your categories here
     scraper = AldiScraper()
     
     # Run the scraper
