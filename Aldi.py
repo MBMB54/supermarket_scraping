@@ -10,8 +10,6 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 from typing import List, Dict, Tuple
 import time
-import boto3
-import os
 from io import StringIO
 from datetime import datetime
 
