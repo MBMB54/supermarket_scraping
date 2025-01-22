@@ -124,57 +124,6 @@ class AldiScraper:
             results = list(executor.map(self.scrape_category, categories))
         return pd.concat(results, ignore_index=True)
 
-def lambda_handler(event, context):
-    """AWS Lambda handler function"""
-    try:
-        # Initialize S3 client
-        s3_client = boto3.client('s3')
-        bucket_name = os.environ['S3_BUCKET_NAME']
-        
-        # Get categories from event or use default
-        categories = event.get('categories', ["aldi_categories"])
-        
-        # Initialize scraper
-        scraper = AldiScraper()
-        
-        # Start time for monitoring
-        start_time = time.time()
-        
-        # Run scraping with timeout
-        df = scraper.scrape_all_categories(categories)
-        
-        # Save to S3
-        csv_buffer = StringIO()
-        df.to_csv(csv_buffer, index=False)
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        s3_key = f'scrapes/{timestamp}_aldi_products.csv'
-        
-        s3_client.put_object(
-            Bucket=bucket_name,
-            Key=s3_key,
-            Body=csv_buffer.getvalue()
-        )
-        
-        execution_time = time.time() - start_time
-        
-        return {
-            'statusCode': 200,
-            'body': {
-                'message': f"Successfully scraped {len(df)} products across {len(categories)} categories",
-                'execution_time_seconds': execution_time,
-                's3_location': f's3://{bucket_name}/{s3_key}',
-                'product_count': len(df)
-            }
-        }
-    except Exception as e:
-        logging.error(f"Error: {str(e)}", exc_info=True)
-        return {
-            'statusCode': 500,
-            'body': {
-                'message': f"Error occurred: {str(e)}"
-            }
-        }
-
 def main():
     
     categories = ["aldi_categories"]  # Add your categories here
