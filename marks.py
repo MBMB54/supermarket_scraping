@@ -3,6 +3,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import NoSuchElementException
 from bs4 import BeautifulSoup
 import pandas as pd
 import re
@@ -13,7 +14,7 @@ import time
 from io import StringIO
 from datetime import datetime
 
-class AldiScraper:
+class OcadoScraper:
     def __init__(self):
         self.chrome_options = Options()
         
@@ -34,76 +35,79 @@ class AldiScraper:
             format='%(asctime)s - %(levelname)s - %(message)s'
         )
         self.logger = logging.getLogger(__name__)
-
-    def get_max_pages(self, driver: webdriver.Chrome, category: str) -> int:
+    def get_total_products(self, driver: webdriver.Chrome, category: str) -> int:
         """Fetch the maximum number of pages for a category."""
         try:
-            url = f"https://groceries.aldi.co.uk/en-GB/{category}?&page=1"
+            url = f"https://www.ocado.com/browse/m-s-at-ocado-294578/{category}?display=2400"
             driver.get(url)
-            soup = BeautifulSoup(driver.page_source, 'html.parser')
-            x = soup.find('span', class_='d-flex-inline pt-2')
-            return int(re.findall(r'\d+', x.text)[0]) if x else 1
+            total_products = driver.find_element(By.CSS_SELECTOR, "div.total-product-number").text
+            return int(re.findall(r'\d+',total_products)[0]) if total_products else 1
         except Exception as e:
-            self.logger.error(f"Error getting max pages for {category}: {e}")
+            self.logger.error(f"Error getting max products for {category}: {e}")
             return 1
 
     def handle_cookies(self, driver: webdriver.Chrome):
         """Handle cookie consent popup."""
         try:
             # Wait longer for the cookie popup and add a small initial delay
-            time.sleep(4)
+            time.sleep(2)
             cookie_button = WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable((By.ID, "onetrust-accept-btn-handler"))
             )
             # Add a small delay before clicking to ensure the element is truly interactive
             cookie_button.click()
             # Wait for the cookie banner to disappear
-            time.sleep(3)
+            time.sleep(2)
         except Exception as e:
-                print(e)
-            # self.logger.warning(f"Cookie handling failed: {e}")
-            # # Try an alternative method if the first one fails
-            # try:
-            #     cookie_button = driver.find_element(By.ID, "onetrust-accept-btn-handler")
-            #     driver.execute_script("arguments[0].click();", cookie_button)
-            # except Exception as e2:
-            #     self.logger.warning(f"Alternative cookie handling also failed: {e2}")
+            self.logger.warning(f"Cookie handling failed: {e}")
 
-    def extract_page_data(self, soup: BeautifulSoup) -> Tuple[List[str], List[str], List[str]]:
+    def extract_page_data(self, driver: webdriver.Chrome) -> Tuple[List[str], List[str], List[str]]:
         """Extract product data from a page."""
-        try:
-            names = [x['title'] for x in soup.find_all('a', class_="p text-default-font")]
-            prices = [x.text for x in soup.find_all('span',class_='h4')]
-            weights = [x.text for x in soup.find_all('div', class_='text-gray-small')]
-            # print(names)
-            return names, prices, weights
-        except Exception as e:
-            self.logger.error(f"Error extracting page data: {e}")
-            return [], [], []
+        containers = driver.find_elements(By.CSS_SELECTOR, "li[class*='fops-item']")
+        n_containers = len(containers)
+        self.logger.info(f"Total products locted: {n_containers}")
 
-    def get_brands_categories(self,categories: List[str]) -> Tuple[List[str], List[str]]:
-        driver = webdriver.Chrome(options=self.chrome_options)
-        self.handle_cookies(driver)
-        brands = []
-        sub_categories = []
-        for category in categories:
-            url = f'https://groceries.aldi.co.uk/en-GB/{category}?&page=1'
-            driver.get(url)
-            soup = BeautifulSoup(driver.page_source, 'html.parser')
-            brands_checkpoint = soup.find('span', class_ ='align-left text-capitalize', string = ' Brand')
-            for x in brands_checkpoint.find_all_next("h6", class_ = 'facet-checkbox'):
-                cleaned = re.sub(r"\(\d+\)" , "", x.text).rstrip()
-                brands.append(cleaned)
-            for x in brands_checkpoint.find_all_previous("h6", class_ = 'facet-checkbox'):
-                cleaned = re.sub(r"\(\d+\)" , "", x.text).rstrip().lstrip()
-                sub_categories.append(cleaned)
-        brands = list(set(brands))
-        brands.remove('Vegan')
-        brands.remove('Vegetarian')
-        brands.remove('Giannis')
-        brands.append("Gianni's")
-        sub_categories = list(set(sub_categories))
-        return brands,sub_categories
+        # Scroll in batches
+        batch_size = 100
+        for i in range(0, n_containers, batch_size):
+            # Calculate the index of the last element in the current batch
+            target_idx = min(i + batch_size - 1, n_containers - 1)
+            # Scroll to the target element (disable smooth scrolling for speed)
+            driver.execute_script(
+                "arguments[0].scrollIntoView({behavior: 'auto', block: 'center'});", 
+                containers[target_idx]
+            )
+            # Tiny delay to allow rendering
+            time.sleep(0.9)
+
+        # Re-fetch containers to avoid staleness
+        containers = driver.find_elements(By.CSS_SELECTOR, "li[class*='fops-item']")
+         # Extract names
+        product_names = []
+        product_prices = []
+        product_weights = []
+        for container in containers:
+            try:
+                name = container.find_element(By.CSS_SELECTOR, "h4.fop-title").get_attribute("title").strip()
+                product_names.append(name)
+            except NoSuchElementException as e:
+                self.logger.error(f"Error extracting page {i} name data: {e}")
+                container.screenshot(f'error{i}.png')
+                product_names.append("N/A")
+            try:
+                price = container.find_element(By.CSS_SELECTOR, "span.fop-price").text
+                product_prices.append(price)
+            except NoSuchElementException as e:
+                self.logger.error(f"Error extracting page {i} price data: {e}")
+                product_prices.append("N/A")
+            try:
+                weight = container.find_element(By.CSS_SELECTOR, "span.fop-catch-weight").text
+                product_weights.append(weight)
+            except NoSuchElementException as e:
+                self.logger.error(f"Error extracting page {i} weight data: {e}")
+                product_weights.append("N/A")
+            
+        return product_names,product_prices,product_weights
 
     def scrape_category(self, category: str) -> pd.DataFrame:
         """Scrape all products from a category."""
@@ -112,21 +116,12 @@ class AldiScraper:
         
         try:
             # Handle cookies once at the start
-            driver.get(f"https://groceries.aldi.co.uk/en-GB/{category}?&page=1")
+            driver.get(f"https://www.ocado.com/browse/m-s-at-ocado-294578/{category}?display=2400")
             self.handle_cookies(driver)
-            
-            max_pages = self.get_max_pages(driver, category)
-            self.logger.info(f"Category {category}: {max_pages} pages found")
-
-            for page in range(1, 1+max_pages):
-                try:
-                    url = f"https://groceries.aldi.co.uk/en-GB/{category}?&page={page}"
-                    driver.get(url)
-                    time.sleep(4)
-                    soup = BeautifulSoup(driver.page_source, 'html.parser')
-                    names, prices, weights = self.extract_page_data(soup)
-                    
-                    for name, price, weight in zip(names, prices, weights):
+            total_products = self.get_total_products(driver, category)
+            self.logger.info(f"Category {category}: {total_products} products found")
+            names, prices, weights = self.extract_page_data(driver)
+            for name, price, weight in zip(names, prices, weights):
                         all_data.append({
                             'product_name': name,
                             'price': price,
@@ -134,11 +129,10 @@ class AldiScraper:
                             'category': category
                         })
                     
-                    self.logger.info(f"Scraped page {page}/{max_pages} of {category}")
+            self.logger.info(f"Scraped {len(names)}/{total_products} of products for {category}")
                     
-                except Exception as e:
-                    self.logger.error(f"Error on page {page} of {category}: {e}")
-                    continue
+        except Exception as e:
+            self.logger.error(f"Error on {category} page: {e}")
                     
         finally:
             driver.quit()   
@@ -150,19 +144,16 @@ class AldiScraper:
             results = list(executor.map(self.scrape_category, categories))
         return pd.concat(results, ignore_index=True)
 
-
-    #def save_to_s3_bucket 
-
 def main():
     
-    categories = ['frozen','food-cupboard','fresh-food','bakery','chilled-food']   # Add your categories here
-    scraper = AldiScraper()
+    categories = ['frozen-303714','best-of-fresh-294566','food-cupboard-drinks-bakery-294572']   # Add your categories here
+    scraper = OcadoScraper()
     
     # Run the scraper
     df = scraper.scrape_all_categories(categories)
     
     # Save results
-    df.to_csv('aldi_products.csv', index=False)
+    df.to_csv('ocado_products.csv', index=False)
     print(f"Scraped {len(df)} products across {len(categories)} categories")
     return df
 
