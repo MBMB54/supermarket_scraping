@@ -33,12 +33,6 @@ on:
 env:
   AWS_REGION: eu-west-1                   # set this to your preferred AWS region, e.g. us-west-1
   ECR_REPOSITORY: docker-images          # set this to your Amazon ECR repository name
-  ECS_SERVICE: MY_ECS_SERVICE                 # set this to your Amazon ECS service name
-  ECS_CLUSTER: MY_ECS_CLUSTER                 # set this to your Amazon ECS cluster name
-  ECS_TASK_DEFINITION: MY_ECS_TASK_DEFINITION # set this to the path to your Amazon ECS task definition
-                                               # file, e.g. .aws/task-definition.json
-  CONTAINER_NAME: MY_CONTAINER_NAME           # set this to the name of the container in the
-                                               # containerDefinitions section of your task definition
 
 permissions:
   contents: read
@@ -81,9 +75,11 @@ jobs:
       run: |
           aws lambda update-function-code \
           --function-name ${{ env.AWS_LAMBDA_FUNC_NAME }} \
-          --image-uri "${{ secrets.AWS_ECR_IMAGE_URI }}:${{ env.ECR_IMAGE_TAG }}"
+          --image-uri "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
       env:
           AWS_LAMBDA_FUNC_NAME: aldi_scraper_lambda
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ${{ env.AWS__REGION }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
