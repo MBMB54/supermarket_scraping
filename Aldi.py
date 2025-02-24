@@ -240,7 +240,7 @@ def lambda_handler(event,context):
     scraper = AldiScraper()
     
     # Run the scraper
-    df = scraper.scrape_category(['frozen'])
+    df = scraper.scrape_category('frozen')
     # df = scraper.scrape_category('frozen')
     scraper.save_df_to_s3(df=df,bucket_name='uksupermarketdata',file_prefix='aldi',folder='aldi')
     # brands, sub_categories = scraper.get_brands_categories(categories)
