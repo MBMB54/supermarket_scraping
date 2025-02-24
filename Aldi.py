@@ -60,8 +60,8 @@ class AldiScraper:
         try:
             url = f"https://groceries.aldi.co.uk/en-GB/{category}?&page=1"
             driver.get(url)
+            time.sleep(4)
             soup = BeautifulSoup(driver.page_source, 'html.parser')
-            time.sleep(2)
             x = soup.find('span', class_='d-flex-inline pt-2')
             return int(re.findall(r'\d+', x.text)[0]) if x else 1
         except Exception as e:
