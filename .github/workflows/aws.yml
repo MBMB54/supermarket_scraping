@@ -19,7 +19,7 @@ name: Deploy to Amazon ECS
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main","ocado_test"]
 
 env:
   AWS_REGION: eu-west-1                   

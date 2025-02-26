@@ -19,7 +19,6 @@ class OcadoScraper:
         self.chrome_options = Options()
         
         # Configure Chrome for Lambda layer
-        # self.chrome_options.binary_location = '/opt/python/headless-chromium/headless-chromium'
         self.chrome_options = Options()
         self.chrome_options.add_argument('--start-maximized')  # Ensures the window is maximized
         self.chrome_options.add_argument('--enable-javascript')  # Explicitly enable JavaScript
@@ -27,14 +26,27 @@ class OcadoScraper:
         self.chrome_options.add_experimental_option('useAutomationExtension', False)
         self.chrome_options.add_argument('--disable-blink-features=AutomationControlled')
         self.chrome_options.add_argument('--headless')
+        self.chrome_options.add_argument("--no-sandbox")
+        self.chrome_options.add_argument("--disable-dev-shm-usage")
+        self.chrome_options.add_argument("--disable-gpu")
+        self.chrome_options.add_argument("--disable-dev-tools")
+        self.chrome_options.add_argument("--no-zygote")
         self.chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36...")
+        self.chrome_options.add_argument(f"--user-data-dir={mkdtemp()}")
+        self.chrome_options.add_argument(f"--data-path={mkdtemp()}")
+        self.chrome_options.add_argument(f"--disk-cache-dir={mkdtemp()}")
+        self.chrome_options.add_argument("--remote-debugging-pipe")
+        self.chrome_options.add_argument("--verbose")
+        self.chrome_options.add_argument("--log-path=/tmp")
+        self.chrome_options.binary_location = "/opt/chrome/chrome-linux64/chrome"
+
+        self.service = Service(
+        executable_path="/opt/chrome-driver/chromedriver-linux64/chromedriver",
+        service_log_path="/tmp/chromedriver.log")
         
-        # Set up logging
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s'
-        )
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.INFO)
+
     def get_total_products(self, driver: webdriver.Chrome, category: str) -> int:
         """Fetch the maximum number of pages for a category."""
         try:
@@ -144,7 +156,48 @@ class OcadoScraper:
             results = list(executor.map(self.scrape_category, categories))
         return pd.concat(results, ignore_index=True)
 
-def main():
+    def save_df_to_s3(self,df, bucket_name, file_prefix, folder=None, file_format='csv'):
+        # Create S3 client
+        s3_client = boto3.client('s3')
+        
+        # Generate filename with today's date
+        today_str = datetime.now().strftime('%Y%m%d')
+        filename = f"{file_prefix}_{today_str}"
+        
+        # Create a buffer to store the file
+        if file_format.lower() == 'csv':
+            buffer = df.to_csv(index=False)
+            filename += '.csv'
+            content_type = 'text/csv'
+        elif file_format.lower() == 'parquet':
+            buffer = df.to_parquet()
+            filename += '.parquet'
+            content_type = 'application/octet-stream'
+        else:
+            raise ValueError("Supported formats are 'csv' and 'parquet'")
+        
+        # Construct the full S3 key (path)
+        if folder:
+            # Remove leading/trailing slashes and combine with filename
+            folder = folder.strip('/')
+            s3_key = f"{folder}/{filename}"
+        else:
+            s3_key = filename
+        
+        # Upload to S3
+        try:
+            s3_client.put_object(
+                Bucket=bucket_name,
+                Key=s3_key,
+                Body=buffer,
+                ContentType=content_type
+            )
+            s3_path = f"s3://{bucket_name}/{s3_key}"
+            self.logger.info(f"Aldi data uploaded to {bucket_name}")
+        except Exception as e:
+            raise Exception(f"Error saving file to S3: {str(e)}")
+
+def lambda_handler(event,context):
     
     categories = ['frozen-303714','best-of-fresh-294566','food-cupboard-drinks-bakery-294572']   # Add your categories here
     scraper = OcadoScraper()
@@ -154,8 +207,6 @@ def main():
     
     # Save results
     df.to_csv('ocado_products.csv', index=False)
+    scraper.save_df_to_s3(df=df,bucket_name='uksupermarketdata',file_prefix='ocado',folder='ocado')
     print(f"Scraped {len(df)} products across {len(categories)} categories")
-    return df
-
-if __name__ == "__main__":
-    main()
+   
