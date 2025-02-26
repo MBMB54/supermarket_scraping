@@ -204,9 +204,6 @@ def lambda_handler(event,context):
     
     # Run the scraper
     df = scraper.scrape_all_categories(categories)
-    
-    # Save results
-    df.to_csv('ocado_products.csv', index=False)
     scraper.save_df_to_s3(df=df,bucket_name='uksupermarketdata',file_prefix='ocado',folder='ocado')
     print(f"Scraped {len(df)} products across {len(categories)} categories")
    
