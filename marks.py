@@ -13,6 +13,8 @@ from typing import List, Dict, Tuple
 import time
 from io import StringIO
 from datetime import datetime
+import boto3
+from tempfile import mkdtemp
 
 class OcadoScraper:
     def __init__(self):
