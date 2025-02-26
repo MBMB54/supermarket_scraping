@@ -124,7 +124,7 @@ class OcadoScraper:
     def scrape_category(self, category: str) -> pd.DataFrame:
         """Scrape all products from a category."""
         all_data = []
-        driver = webdriver.Chrome(options=self.chrome_options)
+        driver = webdriver.Chrome(options=self.chrome_options, service = self.service)
         
         try:
             # Handle cookies once at the start
