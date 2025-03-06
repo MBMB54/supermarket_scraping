@@ -203,7 +203,7 @@ def main():
     scraper = OcadoScraper()
     
     # Run the scraper
-     parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser()
     parser.add_argument("--category", type=str, required=True)
     args = parser.parse_args()
     
