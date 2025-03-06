@@ -16,6 +16,7 @@ from io import StringIO
 from datetime import datetime
 import boto3
 from tempfile import mkdtemp
+import argparse
 
 class OcadoScraper:
     def __init__(self):
@@ -198,12 +199,19 @@ class OcadoScraper:
 
 def main():
     
-    categories = ['frozen-303714','best-of-fresh-294566','food-cupboard-drinks-bakery-294572']   # Add your categories here
+    # categories = ['frozen-303714','best-of-fresh-294566','food-cupboard-drinks-bakery-294572']   # Add your categories here
     scraper = OcadoScraper()
     
     # Run the scraper
-    df = scraper.scrape_all_categories(categories)
-    scraper.save_df_to_s3(df=df,bucket_name='uksupermarketdata',file_prefix='ocado',folder='ocado')
+     parser = argparse.ArgumentParser()
+    parser.add_argument("--category", type=str, required=True)
+    args = parser.parse_args()
+    
+    scraper = OcadoScraper()
+    df = scraper.scrape_category(args.category)
+    scraper.save_df_to_s3(df, bucket_name='uksupermarketdata', 
+                         file_prefix=f'ocado/{args.category}', 
+                         folder='ocado')
     print(f"Scraped {len(df)} products across {len(categories)} categories")
    
 if __name__ == "__main__":
