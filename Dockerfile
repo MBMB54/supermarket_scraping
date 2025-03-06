@@ -3,6 +3,11 @@ RUN apt-get update && apt-get install -y \
     wget \
     unzip \
     gnupg \
+    curl
+RUN apt-get update && apt-get install -y \
+    wget \
+    unzip \
+    gnupg \
     # Chrome dependencies
     libatk1.0-0 \
     libcups2 \
