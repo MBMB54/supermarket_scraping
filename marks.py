@@ -28,19 +28,19 @@ class OcadoScraper:
         self.chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])  # Disable automation flag
         self.chrome_options.add_experimental_option('useAutomationExtension', False)
         self.chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-        self.chrome_options.add_argument('--headless')
         self.chrome_options.add_argument("--no-sandbox")
         self.chrome_options.add_argument("--disable-dev-shm-usage")
         self.chrome_options.add_argument("--disable-gpu")
         self.chrome_options.add_argument("--disable-dev-tools")
         self.chrome_options.add_argument("--no-zygote")
         self.chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36...")
-        self.chrome_options.add_argument("--remote-debugging-pipe")
-        self.chrome_options.add_argument("--verbose")
-        self.chrome_options.binary_location = "/usr/bin/google-chrome-stable" 
+        self.chrome_options.add_argument('--headless=new')  # New headless mode
+        self.chrome_options.add_argument('--no-zygote')
+        self.chrome_options.binary_location = "/usr/local/bin/chrome"
 
         self.service = Service(
-            executable_path="/usr/local/bin/chromedriver",  # Updated path
+            executable_path="/usr/local/bin/chromedriver", # Updated path
+             service_args=['--verbose'],
             service_log_path="/tmp/chromedriver.log")
         
         self.logger = logging.getLogger()
