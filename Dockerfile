@@ -1,4 +1,4 @@
-FROM amazon/aws-lambda-python:3.9
+FROM python:3.9-slim
 # Install chrome dependencies
 RUN yum install -y atk cups-libs gtk3 libXcomposite alsa-lib \
     libXcursor libXdamage libXext libXi libXrandr libXScrnSaver \
