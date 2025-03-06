@@ -35,17 +35,13 @@ class OcadoScraper:
         self.chrome_options.add_argument("--disable-dev-tools")
         self.chrome_options.add_argument("--no-zygote")
         self.chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36...")
-        self.chrome_options.add_argument(f"--user-data-dir={mkdtemp()}")
-        self.chrome_options.add_argument(f"--data-path={mkdtemp()}")
-        self.chrome_options.add_argument(f"--disk-cache-dir={mkdtemp()}")
         self.chrome_options.add_argument("--remote-debugging-pipe")
         self.chrome_options.add_argument("--verbose")
-        self.chrome_options.add_argument("--log-path=/tmp")
-        self.chrome_options.binary_location = "/opt/chrome/chrome-linux64/chrome"
+        self.chrome_options.binary_location = "/usr/bin/google-chrome-stable" 
 
         self.service = Service(
-        executable_path="/opt/chrome-driver/chromedriver-linux64/chromedriver",
-        service_log_path="/tmp/chromedriver.log")
+            executable_path="/usr/local/bin/chromedriver",  # Updated path
+            service_log_path="/tmp/chromedriver.log")
         
         self.logger = logging.getLogger()
         self.logger.setLevel(logging.INFO)
