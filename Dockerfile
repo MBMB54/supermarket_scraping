@@ -37,7 +37,7 @@ RUN CHROME_VERSION=$(google-chrome --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'
     && wget -q "https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip" \
     && unzip chromedriver_linux64.zip \
     && mv chromedriver /usr/local/bin/chromedriver \
-    && chmod +x /usr/local/bin/chrochromedriver
+    && chmod +x /usr/local/bin/chromedriver
 # Copy requirements and install dependencies
 COPY requirements.txt .
 RUN pip install -r requirements.txt
