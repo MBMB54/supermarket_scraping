@@ -15,4 +15,4 @@ RUN pip install -r requirements.txt
 # Copy the main application code
 COPY marks.py ./
 # Command to run the Lambda function
-CMD [ "python", "ocado_scraper.py"]
+CMD [ "python", "marks.py"]

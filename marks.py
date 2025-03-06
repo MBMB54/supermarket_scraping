@@ -200,7 +200,7 @@ class OcadoScraper:
         except Exception as e:
             raise Exception(f"Error saving file to S3: {str(e)}")
 
-def lambda_handler(event,context):
+def main():
     
     categories = ['frozen-303714','best-of-fresh-294566','food-cupboard-drinks-bakery-294572']   # Add your categories here
     scraper = OcadoScraper()
@@ -210,3 +210,5 @@ def lambda_handler(event,context):
     scraper.save_df_to_s3(df=df,bucket_name='uksupermarketdata',file_prefix='ocado',folder='ocado')
     print(f"Scraped {len(df)} products across {len(categories)} categories")
    
+if __name__ == "__main__":
+    main()
