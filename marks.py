@@ -157,7 +157,7 @@ class OcadoScraper:
             results = list(executor.map(self.scrape_category, categories))
         return pd.concat(results, ignore_index=True)
 
-    def save_df_to_s3(self, df: pd.DataFrame , bucket_name: str, file_prefix: str, folder=None, file_format: str):
+    def save_df_to_s3(self, df: pd.DataFrame , bucket_name: str, file_prefix: str, file_format: str, folder=None):
         # Create S3 client
         s3_client = boto3.client('s3')
         
