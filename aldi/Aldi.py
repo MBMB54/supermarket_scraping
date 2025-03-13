@@ -237,7 +237,7 @@ def lambda_handler(event,context):
     scraper = AldiScraper()
     
     # Run the scraper
-    df = scraper.scrape_category('frozen')
+    df = scraper.scrape_all_categories(categories)
     scraper.save_df_to_s3(df=df,bucket_name='uksupermarketdata',file_prefix='aldi',folder='aldi')
     print(f"Scraped {len(df)} products across {len(categories)} categories")
     

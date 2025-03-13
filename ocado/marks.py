@@ -148,7 +148,9 @@ class OcadoScraper:
                     
         finally:
             driver.quit()   
-        return pd.DataFrame(all_data)
+        df = pd.DataFrame(all_data)
+        df['supermarket'] = 'ocado'
+        return pd.DataFrame(df)
 
     def scrape_all_categories(self, categories: List[str], max_workers: int = 5) -> pd.DataFrame:
         """Scrape all categories using ThreadPoolExecutor."""
@@ -156,7 +158,7 @@ class OcadoScraper:
             results = list(executor.map(self.scrape_category, categories))
         return pd.concat(results, ignore_index=True)
 
-    def save_df_to_s3(self,df, bucket_name, file_prefix, folder=None, file_format='csv'):
+    def save_df_to_s3(self, df: pd.DataFrame , bucket_name: str, file_prefix: str, folder=None, file_format: str):
         # Create S3 client
         s3_client = boto3.client('s3')
         
@@ -193,7 +195,7 @@ class OcadoScraper:
                 ContentType=content_type
             )
             s3_path = f"s3://{bucket_name}/{s3_key}"
-            self.logger.info(f"Aldi data uploaded to {bucket_name}")
+            self.logger.info(f"Ocado data uploaded to {bucket_name}")
         except Exception as e:
             raise Exception(f"Error saving file to S3: {str(e)}")
 
@@ -211,8 +213,7 @@ def main():
     df = scraper.scrape_category(args.category)
     scraper.save_df_to_s3(df, bucket_name='uksupermarketdata', 
                          file_prefix=f'ocado/{args.category}', 
-                         folder='ocado')
-    print(f"Scraped {len(df)} products across {len(categories)} categories")
+                         folder='ocado',file_format = 'parquet')
    
 if __name__ == "__main__":
     main()
