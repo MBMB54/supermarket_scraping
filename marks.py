@@ -149,8 +149,7 @@ class OcadoScraper:
         finally:
             driver.quit()   
         df = pd.DataFrame(all_data)
-        df['supermarket'] = 'ocado'
-        return pd.DataFrame(df)
+        return df
 
     def scrape_all_categories(self, categories: List[str], max_workers: int = 5) -> pd.DataFrame:
         """Scrape all categories using ThreadPoolExecutor."""
