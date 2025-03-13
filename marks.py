@@ -211,8 +211,8 @@ def main():
     scraper = OcadoScraper()
     df = scraper.scrape_category(args.category)
     scraper.save_df_to_s3(df, bucket_name='uksupermarketdata', 
-                         file_prefix=f'ocado/{args.category}', 
-                         folder='ocado',file_format = 'parquet')
+                         file_prefix=f'{args.category}', 
+                         folder='supermarket=ocado',file_format = 'parquet')
    
 if __name__ == "__main__":
     main()
