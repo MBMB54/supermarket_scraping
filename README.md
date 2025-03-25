@@ -22,3 +22,14 @@ graph TD
     C -->|Stores Data| D[S3 Data Lake]
     D -->|Query| E[Athena]
     E -->|Visualize| F[QuickSight]
+```
+
+##  🌐   Future Roadmap
+- **Price change alerts via SNS
+
+- **ML-powered price prediction (SageMaker)
+
+- **Multi-region deployment
+
+- **CI/CD pipeline with CodeBuild
+
