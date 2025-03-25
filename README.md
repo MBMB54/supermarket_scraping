@@ -25,11 +25,14 @@ graph TD
 ```
 
 ##  🌐   Future Roadmap
-- **Price change alerts via SNS
 
-- **ML-powered price prediction (SageMaker)
+- Addition of new supermarkets - Sainsburys and Asda
+  
+- Price change alerts via SNS
 
-- **Multi-region deployment
+- Historical analysis to track long term inflation and compare prices between supermarkets
 
-- **CI/CD pipeline with CodeBuild
+- ML-powered price prediction and forecasting (SageMaker)
+
+-
 
