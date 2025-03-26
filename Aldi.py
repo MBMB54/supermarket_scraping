@@ -21,7 +21,6 @@ class AldiScraper:
         self.chrome_options = Options()
         
         # Configure Chrome for Lambda layer
-        # self.chrome_options.binary_location = '/opt/python/headless-chromium/headless-chromium'
         self.chrome_options = Options()
         self.chrome_options.add_argument('--start-maximized')  # Ensures the window is maximized
         self.chrome_options.add_argument('--enable-javascript')  # Explicitly enable JavaScript
@@ -232,25 +231,13 @@ class AldiScraper:
             raise Exception(f"Error saving file to S3: {str(e)}")
 
 
-    #def save_to_s3_bucket 
-
 def lambda_handler(event,context):
     
     categories = ['frozen','food-cupboard','fresh-food','bakery','chilled-food']   # Add your categories here
     scraper = AldiScraper()
     
     # Run the scraper
-    df = scraper.scrape_category('frozen')
-    # df = scraper.scrape_category('frozen')
+    df = scraper.scrape_all_categories(categories)
     scraper.save_df_to_s3(df=df,bucket_name='uksupermarketdata',file_prefix='aldi',folder='aldi')
-    # brands, sub_categories = scraper.get_brands_categories(categories)
-    # Save results
-    # print(brands)
-    # brands.to_csv('aldi_brands.csv')
-    # df.to_csv('aldi_products.csv', index=False)
-    # print(f"Scraped {len(df)} products across {len(categories)} categories")
-    print('success')
+    print(f"Scraped {len(df)} products across {len(categories)} categories")
     
-
-# if __name__ == "__main__":
-#     main()

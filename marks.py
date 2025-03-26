@@ -3,6 +3,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import NoSuchElementException
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -13,28 +14,39 @@ from typing import List, Dict, Tuple
 import time
 from io import StringIO
 from datetime import datetime
+import boto3
+from tempfile import mkdtemp
+import argparse
 
 class OcadoScraper:
     def __init__(self):
         self.chrome_options = Options()
         
         # Configure Chrome for Lambda layer
-        # self.chrome_options.binary_location = '/opt/python/headless-chromium/headless-chromium'
         self.chrome_options = Options()
         self.chrome_options.add_argument('--start-maximized')  # Ensures the window is maximized
         self.chrome_options.add_argument('--enable-javascript')  # Explicitly enable JavaScript
         self.chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])  # Disable automation flag
         self.chrome_options.add_experimental_option('useAutomationExtension', False)
         self.chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-        self.chrome_options.add_argument('--headless')
+        self.chrome_options.add_argument("--no-sandbox")
+        self.chrome_options.add_argument("--disable-dev-shm-usage")
+        self.chrome_options.add_argument("--disable-gpu")
+        self.chrome_options.add_argument("--disable-dev-tools")
+        self.chrome_options.add_argument("--no-zygote")
         self.chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36...")
+        self.chrome_options.add_argument('--headless=new')  # New headless mode
+        self.chrome_options.add_argument('--no-zygote')
+        self.chrome_options.binary_location = "/usr/local/bin/chrome"
+
+        self.service = Service(
+            executable_path="/usr/local/bin/chromedriver", # Updated path
+             service_args=['--verbose'],
+            service_log_path="/tmp/chromedriver.log")
         
-        # Set up logging
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s'
-        )
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.INFO)
+
     def get_total_products(self, driver: webdriver.Chrome, category: str) -> int:
         """Fetch the maximum number of pages for a category."""
         try:
@@ -112,7 +124,7 @@ class OcadoScraper:
     def scrape_category(self, category: str) -> pd.DataFrame:
         """Scrape all products from a category."""
         all_data = []
-        driver = webdriver.Chrome(options=self.chrome_options)
+        driver = webdriver.Chrome(options=self.chrome_options, service = self.service)
         
         try:
             # Handle cookies once at the start
@@ -136,7 +148,8 @@ class OcadoScraper:
                     
         finally:
             driver.quit()   
-        return pd.DataFrame(all_data)
+        df = pd.DataFrame(all_data)
+        return df
 
     def scrape_all_categories(self, categories: List[str], max_workers: int = 5) -> pd.DataFrame:
         """Scrape all categories using ThreadPoolExecutor."""
@@ -144,18 +157,62 @@ class OcadoScraper:
             results = list(executor.map(self.scrape_category, categories))
         return pd.concat(results, ignore_index=True)
 
+    def save_df_to_s3(self, df: pd.DataFrame , bucket_name: str, file_prefix: str, file_format: str, folder=None):
+        # Create S3 client
+        s3_client = boto3.client('s3')
+        
+        # Generate filename with today's date
+        today_str = datetime.now().strftime('%Y%m%d')
+        filename = f"{file_prefix}_{today_str}"
+        
+        # Create a buffer to store the file
+        if file_format.lower() == 'csv':
+            buffer = df.to_csv(index=False)
+            filename += '.csv'
+            content_type = 'text/csv'
+        elif file_format.lower() == 'parquet':
+            buffer = df.to_parquet()
+            filename += '.parquet'
+            content_type = 'application/octet-stream'
+        else:
+            raise ValueError("Supported formats are 'csv' and 'parquet'")
+        
+        # Construct the full S3 key (path)
+        if folder:
+            # Remove leading/trailing slashes and combine with filename
+            folder = folder.strip('/')
+            s3_key = f"{folder}/{filename}"
+        else:
+            s3_key = filename
+        
+        # Upload to S3
+        try:
+            s3_client.put_object(
+                Bucket=bucket_name,
+                Key=s3_key,
+                Body=buffer,
+                ContentType=content_type
+            )
+            s3_path = f"s3://{bucket_name}/{s3_key}"
+            self.logger.info(f"Ocado data uploaded to {bucket_name}")
+        except Exception as e:
+            raise Exception(f"Error saving file to S3: {str(e)}")
+
 def main():
     
-    categories = ['frozen-303714','best-of-fresh-294566','food-cupboard-drinks-bakery-294572']   # Add your categories here
+    # categories = ['frozen-303714','best-of-fresh-294566','food-cupboard-drinks-bakery-294572']  
     scraper = OcadoScraper()
     
-    # Run the scraper
-    df = scraper.scrape_all_categories(categories)
+    # Add argument parser so category can be passed when submitting AWS Batch job
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--category", type=str, required=True)
+    args = parser.parse_args()
     
-    # Save results
-    df.to_csv('ocado_products.csv', index=False)
-    print(f"Scraped {len(df)} products across {len(categories)} categories")
-    return df
-
+    scraper = OcadoScraper()
+    df = scraper.scrape_category(args.category)
+    scraper.save_df_to_s3(df, bucket_name='uksupermarketdata', 
+                         file_prefix=f'{args.category}', 
+                         folder='supermarket=ocado',file_format = 'parquet')
+   
 if __name__ == "__main__":
     main()

@@ -7,7 +7,8 @@
 A scalable cloud-native solution for monitoring grocery prices across major UK supermarkets, built with Docker containers and AWS serverless technologies.
 
 ## 🚀 Key Features
-- **Multi-Supermarket Support**: Simultaneous scraping of Ocado, Tesco, and Aldi.
+
+- **Multi-Supermarket Support**: Simultaneous scraping of Ocado, Tesco, and Aldi
 - **AWS Batch Processing**: Containerized jobs with Fargate Spot instances
 - **Data Lake Architecture**: S3 storage with Parquet partitioning
 - **Automated Scheduling**: Lambda-driven cron jobs using AWS EventBridge
@@ -33,6 +34,4 @@ graph TD
 - Historical analysis to track long term inflation and compare prices between supermarkets
 
 - ML-powered price prediction and forecasting (SageMaker)
-
--
 
