@@ -200,10 +200,10 @@ class OcadoScraper:
 
 def main():
     
-    # categories = ['frozen-303714','best-of-fresh-294566','food-cupboard-drinks-bakery-294572']   # Add your categories here
+    # categories = ['frozen-303714','best-of-fresh-294566','food-cupboard-drinks-bakery-294572']  
     scraper = OcadoScraper()
     
-    # Run the scraper
+    # Add argument parser so category can be passed when submitting AWS Batch job
     parser = argparse.ArgumentParser()
     parser.add_argument("--category", type=str, required=True)
     args = parser.parse_args()
