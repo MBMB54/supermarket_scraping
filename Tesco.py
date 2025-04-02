@@ -108,7 +108,7 @@ class TescoScraper:
         return pd.concat(results, ignore_index=True)
 
 def main():
-    categories = ['frozen-food',"food-cupboard","fresh-food","bakery" ]  # Add your categories here
+    categories = ["bakery"]  # Add your categories here ['frozen-food',"food-cupboard","fresh-food",
     scraper = TescoScraper()
     
     # Run the scraper
