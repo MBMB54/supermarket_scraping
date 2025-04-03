@@ -19,7 +19,7 @@ class TescoScraper:
         self.chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])  # Disable automation flag
         self.chrome_options.add_experimental_option('useAutomationExtension', False)
         self.chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-        self.chrome_options.add_argument('--headless')
+        # self.chrome_options.add_argument('--headless')
         self.chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36...")
     
         logging.basicConfig(
