@@ -1,0 +1,117 @@
+QUERY FLOW:
+--> Initial Search
+--> Gliner to identify product, brand, supermarket quantity
+--> if brand and supermarket detected, ensure these exist in database using levnsthein distance maybe?
+--> Pass this metadata to initial LLM and perform hybrid Search (top k) and rerank
+ --> Select disitnct aisle and relevant shelves in aisle
+ --> Use LLM to parse intent and pick most applicable, or multiple if relevant, aisles/shelves 
+ --> get similar categories if applicable(e.g there is Natural & Greek Style Yoghurts & Low Fat & Fat Free Yoghurt aisle create matrix of category similarities) 
+ --> with relevant aisles picked feed this metadata and SQL prompt info into another LLM network to generate relevant list of products 
+ --> Run SQL query 
+ --> Return results and have LLM summarise these to end user (incluidng product photos would be useful here)
+
+
+
+
+
+
+Tesco offers a variety of Irish steak cuts, each with different sizes and pricing options. Here's a breakdown of the available cuts and their details:
+
+1. **Ribeye Steak**
+   - 400g: €10.50 (€26.25/kg)
+   - 284g Certified Irish Angus: €14.49 (€51.02/kg)
+   - 454g Certified Irish Angus (Dry Aged Sharing Steak): €25.99 (€57.25/kg)
+   - 227g Certified Irish Angus: €9.99 (€44.01/kg)
+
+2. **Striploin Steak**
+   - 400g: €9.50 (€23.75/kg)
+   - 400g with Chimichurri: €13.50 (€33.75/kg)
+   - 600g: €15.00 (€25.00/kg)
+   - 454g Certified Irish Angus: €13.99 (€30.82/kg, €11.99 with clubcard)
+
+3. **Fillet Steak**
+   - 284g Certified Irish Angus: €21.99 (€77.43/kg)
+   - 200g Irish Angus: €13.99 (€69.95/kg)
+   - 400g Irish Angus: €17.99 (€44.98/kg)
+   - 330g: €13.50 (€40.91/kg)
+
+4. **Sirloin Steak**
+   - 200g: €4.00 (€20.00/kg)
+   - 454g: €8.00 (€17.62/kg)
+   - 266g: €6.00 (€22.56/kg, €5.00 with clubcard)
+   - 205g Organic: €7.50 (€36.58/kg, €6.00 with clubcard)
+   - 513g: €10.00 (€19.49/kg)
+   - 335g with Mixed Pepper: €7.50 (€22.39/kg)
+
+5. **Minute Steak**
+   - 360g: €6.00 (€16.67/kg)
+   - 437g: €6.72 (€15.38/kg)
+
+6. **Braising Steaks**
+   - 454g: €5.50 (€12.12/kg)
+
+7. **T-Bone Sharing Steak**
+   - 600g Certified Irish Angus: €25.99 (€43.32/kg)
+
+8. **Cote De Boeuf Sharing Steak**
+   - 600g Certified Irish Angus: €25.99 (€43.32/kg)
+
+9. **Tomahawk Steak**
+   - 745g with Texan BBQ Seasoning: €27.50 (€36.91/kg)
+
+10. **Quick Fry Steaks**
+    - 360g with Sticky Soy, Chilli, Honey: €5.50 (€15.28/kg)
+    - 360g Piri Piri: €5.50 (€15.28/kg)
+
+11. **Sandwich Steak**
+    - 510g: €7.50 (€14.71/kg)
+
+This list provides a clear overview of the available cuts, their sizes, and pricing, including any promotional prices for clubcard holders.
+
+
+
+Here are the different cuts of steak available at Tesco along with their prices and unit prices:
+
+1. **Ribeye Steak**:
+   - Certified Irish Angus 10oz Rib Eye Steak 284g: €14.49 (€51.02/kg)
+   - Certified Irish Angus 16oz Dry Aged Rib Eye Sharing Steak 454g: €25.99 (€57.25/kg)
+   - Certified Irish Angus Ribeye Steak 227g: €9.99 (€44.01/kg)
+   - Irish Ribeye Steak 454g: €12.5 (€27.53/kg)
+
+2. **Striploin Steak**:
+   - BEEF STRIPLOIN STEAK 400g: €9.5 (€23.75/kg)
+   - Chimichurri Irish Beef Striploin Steaks 400g: €13.5 (€33.75/kg)
+   - IRISH BEEF STRIPLOIN STEAK 600g: €15.0 (€25.0/kg, Clubcard price €14.0)
+   - Irish Angus Striploin Steak 454g: €13.99 (€30.82/kg, Clubcard price €11.99)
+
+3. **Fillet Steak**:
+   - Certified Irish Angus Beef Fillet Steak 284g: €21.99 (€77.43/kg)
+   - Irish Angus Beef Fillet Steak 200g: €13.99 (€69.95/kg)
+   - Irish Angus Fillet Steaks 400g: €17.99 (€44.98/kg)
+   - Irish Beef Fillet Steak 330g: €13.5 (€40.91/kg)
+
+4. **Sirloin Steak**:
+   - IRISH BEEF SIRLOIN STEAK 200g: €4.0 (€20.0/kg)
+   - IRISH BEEF SIRLOIN STEAK 454g: €8.0 (€17.62/kg)
+   - Irish Sirloin Steak 266g: €6.0 (€22.56/kg, Clubcard price €5.0)
+   - Irish Sirloin Steak 513g: €10.0 (€19.49/kg)
+   - Irish Organic Sirloin Steak 205g: €7.5 (€36.58/kg, Clubcard price €6.0)
+
+5. **Other Cuts**:
+   - IRISH BEEF MINUTE STEAK 360g: €6.0 (€16.67/kg)
+   - IRISH BEEF BRAISING STEAKS 454g: €5.5 (€12.12/kg)
+   - Irish Beef Quick Fry Steaks with Sticky Soy, Chilli, and Honey 360g: €5.5 (€15.28/kg)
+   - Piri Piri Irish Beef Quick Fry Steaks 360g: €5.5 (€15.28/kg)
+   - Sandwich Steak 510g: €7.5 (€14.71/kg)
+
+### Value Comparison:
+- **Cheapest Option**: IRISH BEEF BRAISING STEAKS 454g at €12.12/kg.
+- **Best Value for Traditional Steak Cuts**: IRISH BEEF SIRLOIN STEAK 454g at €17.62/kg.
+- **Most Expensive Option**: Certified Irish Angus Beef Fillet Steak at €77.43/kg.
+
+### Sharing Steaks:
+- Certified Irish Angus Cote De Boeuf Sharing Steak 600g: €25.99 (€43.32/kg)
+- Certified Irish Angus TBone Sharing Steak 600g: €25.99 (€43.32/kg)
+- Certified Irish Angus 16oz Dry Aged Rib Eye Sharing Steak 454g: €25.99 (€57.25/kg)
+
+This summary provides a clear overview of the steak cuts available, their prices, and their value based on unit prices.

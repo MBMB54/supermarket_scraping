@@ -1,0 +1,11 @@
+.claude
+.ruff_cache
+.venv
+# notebooks/*.json
+*.jsonl
+*.jsonl.gz
+*.db
+*.db.wal
+*test.py
+# *.ipynb
+.env
