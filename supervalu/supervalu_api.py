@@ -19,7 +19,7 @@ USER_AGENT_STRINGS = [
     "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36",
     "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36",
 ]
-with open("/Users/brianbarry/code/supermarket_scraping/supervalu/supervalu_ids.csv") as f:
+with open("supervalu_ids.csv") as f:
     next(f)  # Skip header
     SUPERVALU_IDS = f.read().splitlines()
 
