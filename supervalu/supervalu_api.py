@@ -2,7 +2,6 @@ import asyncio
 import gzip
 import json
 import logging
-import os
 import random
 from datetime import datetime
 
@@ -45,7 +44,7 @@ async def fetch_product(
     async with semaphore:
         await asyncio.sleep(0.5)
 
-        for store_id in [5550]:
+        for store_id in [5550, 309, 267, 350]:
             try:
                 async with session.get(
                     f"https://storefrontgateway.supervalu.ie/api/stores/{store_id}/products/{product_id}",
@@ -62,7 +61,7 @@ async def fetch_product(
                                 "error": None,
                             }
                     # If 404 or empty, try next store
-            except Exception as e:
+            except Exception:
                 continue  # Try next store on error
 
         # All stores failed
@@ -111,18 +110,18 @@ failures = [r for r in results if r["error"]]
 
 logger.info(f"Success: {len(successes)}, Failed: {len(failures)}")
 
-# timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-# folder_date = datetime.now().strftime("%Y-%m-%d")
-# filename = f"supervalu_raw_{timestamp}_chunk{chunk_id}.jsonl.gz"
-# aws_tmp_location = f"/tmp/{filename}"
-# s3_raw_upload_location = f"raw/supervalu/{folder_date}/{filename}"
-# with gzip.open(aws_tmp_location, "wt", encoding="utf-8") as f:
-#     for result in results:
-#         f.write(json.dumps(result) + "\n")
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+folder_date = datetime.now().strftime("%Y-%m-%d")
+filename = f"supervalu_raw_{timestamp}_chunk{chunk_id}.jsonl.gz"
+aws_tmp_location = f"/tmp/{filename}"
+s3_raw_upload_location = f"raw/supervalu/{folder_date}/{filename}"
+with gzip.open(aws_tmp_location, "wt", encoding="utf-8") as f:
+    for result in results:
+        f.write(json.dumps(result) + "\n")
 
-# s3 = boto3.client("s3")
+s3 = boto3.client("s3")
 
-# s3.upload_file(aws_tmp_location, "ie-supermarket-data", s3_raw_upload_location)
+s3.upload_file(aws_tmp_location, "ie-supermarket-data", s3_raw_upload_location)
 
 
-# logger.info(f"Saved {len(results)} products to {filename}")
+logger.info(f"Saved {len(results)} products to {filename}")
