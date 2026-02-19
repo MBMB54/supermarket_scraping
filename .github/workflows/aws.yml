@@ -79,15 +79,15 @@ jobs:
           # Register the new job definition revision
           aws batch register-job-definition --cli-input-json file://new-job-def.json
 
-    - name: Deploy to AWS Lambda
-      run: |
-          aws lambda update-function-code \
-          --function-name ${{ env.AWS_LAMBDA_FUNC_NAME }} \
-          --image-uri "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-      env:
-          AWS_LAMBDA_FUNC_NAME: aldi_scraper_lambda
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: ${{ env.AWS_REGION }}
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
+    # - name: Deploy to AWS Lambda
+    #   run: |
+    #       aws lambda update-function-code \
+    #       --function-name ${{ env.AWS_LAMBDA_FUNC_NAME }} \
+    #       --image-uri "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+    #   env:
+    #       AWS_LAMBDA_FUNC_NAME: aldi_scraper_lambda
+    #       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    #       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    #       AWS_DEFAULT_REGION: ${{ env.AWS_REGION }}
+    #       ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+    #       IMAGE_TAG: ${{ github.sha }}
