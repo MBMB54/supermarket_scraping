@@ -2,6 +2,7 @@ import asyncio
 import gzip
 import json
 import logging
+import os
 import random
 from datetime import datetime
 
@@ -91,8 +92,8 @@ async def fetch_all_products(product_ids: list[str]) -> list[dict]:
         return results
 
 
-chunk_id = 1  # int(os.environ["CHUNK_ID"])
-total_chunks = 1  # int(os.environ["TOTAL_CHUNKS"])
+chunk_id = int(os.environ["CHUNK_ID"])
+total_chunks = int(os.environ["TOTAL_CHUNKS"])
 logger.info(f"Scraping chunk {chunk_id}/{total_chunks}")
 # Each task scrapes its portion
 chunk_size = len(SUPERVALU_IDS) // total_chunks
@@ -100,7 +101,7 @@ logger.info(f"Chunk size : {chunk_size}")
 start = chunk_id * chunk_size
 end = start + chunk_size if chunk_id < total_chunks - 1 else len(SUPERVALU_IDS)
 logger.info(f"Calling API for product id {start} to {end}")
-product_ids = SUPERVALU_IDS[0:501]
+product_ids = SUPERVALU_IDS[start:end]
 
 results = asyncio.run(fetch_all_products(product_ids))
 
