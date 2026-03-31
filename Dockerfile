@@ -18,4 +18,7 @@ COPY tesco/ie_tesco_ids.csv ./
 COPY supervalu/supervalu_api.py ./
 COPY supervalu/supervalu_ids.csv ./
 
+COPY aldi/aldi_api.py ./
+COPY aldi/ie_aldi_ids.csv ./
+
 CMD ["python", "tesco_api.py"]

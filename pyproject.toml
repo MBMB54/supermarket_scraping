@@ -23,6 +23,12 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "python-levenshtein>=0.27.3",
     "mlflow[genai]>=3.9.0",
+    "numpy>=2.3.5",
+    "ipykernel>=7.1.0",
+    "rerankers>=0.10.0",
+    "gliner2>=1.2.4",
+    "sentence-transformers>=5.2.2",
+    "mlx-lm>=0.30.7",
 ]
 
 
