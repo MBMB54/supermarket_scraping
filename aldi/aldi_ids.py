@@ -1,0 +1,54 @@
+import datetime
+import logging
+import re
+
+import polars as pl
+import requests
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("aldi_api")
+
+BUCKET = "ie-supermarket-data"
+RETAILER = "aldi"
+
+
+def scrape_aldi_product_ids() -> list[dict]:
+    xml_text = requests.get("https://www.aldi.ie/sitemap_products.xml", timeout=30).text
+    urls = re.findall(r"<loc>(https://www\.aldi\.ie/product/[^<]+)</loc>", xml_text)
+
+    results = []
+    for url in urls:
+        match = re.search(r"\d{18}", url)
+        if match:
+            results.append({"product_id": match.group(), "url": url})
+
+    return results
+
+
+def write_to_parquet_and_upload(records: list[dict]) -> str:
+    now = datetime.datetime.now(tz=datetime.UTC)
+    folder_date = now.strftime("%Y-%m-%d")
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    filename = f"{RETAILER}_product_ids_{timestamp}.parquet"
+    s3_uri = f"s3://{BUCKET}/raw/{RETAILER}/ids/date={folder_date}/{filename}"
+
+    df = pl.DataFrame(records).with_columns(
+        pl.lit(now).alias("scraped_at"),
+        pl.lit(RETAILER).alias("retailer"),
+    )
+
+    df.write_parquet(
+        s3_uri,
+        compression="snappy",
+        storage_options={
+            "aws_region": "eu-west-1",
+        },
+    )
+
+    logger.info(f"Uploaded {len(records)} product IDs to {s3_uri}")
+    return s3_uri
+
+
+if __name__ == "__main__":
+    records = scrape_aldi_product_ids()
+    write_to_parquet_and_upload(records)

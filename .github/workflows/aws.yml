@@ -1,36 +1,19 @@
-# This workflow will build and push a new container image to Amazon ECR,
-# and then will deploy a new task definition to Amazon ECS, when there is a push to the "main" branch.
-#
-# To use this workflow, you will need to complete the following set-up steps:
-#
-# 1. Create an ECR repository to store your images.
-#    For example: `aws ecr create-repository --repository-name my-ecr-repo --region us-east-2`.
-#    Replace the value of the `ECR_REPOSITORY` environment variable in the workflow below with your repository's name.
-#    Replace the value of the `AWS_REGION` environment variable in the workflow below with your repository's region.
-#
-# 2. Create an ECS task definition, an ECS cluster, and an ECS service.
-#    For example, follow the Getting Started guide on the ECS console:
-#      https://us-east-2.console.aws.amazon.com/ecs/home?region=us-east-2#/firstRun
-#    Replace the value of the `ECS_SERVICE` environment variable in the workflow below with the name you set for the Amazon ECS service.
-#    Replace the value of the `ECS_CLUSTER` environment variable in the workflow below with the name you set for the cluster.
-
-
-name: Deploy to Amazon ECS
+name: Build and push Docker images to ECR
 
 on:
   push:
     branches: ["local_implementation"]
 
 env:
-  AWS_REGION: eu-west-1                   
-  ECR_REPOSITORY: docker-images         
+  AWS_REGION: eu-west-1
+  ECR_REPOSITORY: docker-images
 
 permissions:
   contents: read
 
 jobs:
-  deploy:
-    name: Deploy
+  build-and-push:
+    name: Build and push
     runs-on: ubuntu-latest
     environment: production
 
@@ -49,45 +32,65 @@ jobs:
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
 
-    - name: Build, tag, and push image to Amazon ECR
-      id: build-image
+    - name: Build and push ids image
+      id: build-ids
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        IMAGE_TAG: ${{ github.sha }}
+        IMAGE_TAG: ids-${{ github.sha }}
       run: |
-        # Build a docker container and
-        # push it to ECR so that it can
-        # be deployed to ECS.
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker build -f Dockerfile.ids -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-    - name: Update Batch job definition
+    - name: Build and push scraper image
+      id: build-scraper
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: scraper-${{ github.sha }}
       run: |
-          # Get current job definition
-          aws batch describe-job-definitions \
-            --job-definition-name ocado_scraper_job_defintion \
-            --status ACTIVE \
-            --query 'jobDefinitions[0]' > job-def.json
-          
-          # Update the image URI and remove fields that can't be resubmitted
-          jq --arg IMAGE_URI "${{ steps.build-image.outputs.image }}" '
-            .containerProperties.image = $IMAGE_URI |
-            del(.jobDefinitionArn, .revision, .status, .containerOrchestrationType)
-          ' job-def.json > new-job-def.json
-          
-          # Register the new job definition revision
-          aws batch register-job-definition --cli-input-json file://new-job-def.json
+        docker build -f Dockerfile.scraper -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-    # - name: Deploy to AWS Lambda
-    #   run: |
-    #       aws lambda update-function-code \
-    #       --function-name ${{ env.AWS_LAMBDA_FUNC_NAME }} \
-    #       --image-uri "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+    - name: Update Batch job definition — scraper image
+      env:
+        SCRAPER_IMAGE: ${{ steps.build-scraper.outputs.image }}
+      run: |
+        aws batch describe-job-definitions \
+          --job-definition-name ocado_scraper_definition \
+          --status ACTIVE \
+          --query 'jobDefinitions[0]' > job-def.json
+        jq --arg IMAGE_URI "$SCRAPER_IMAGE" '
+          .containerProperties.image = $IMAGE_URI |
+          del(.jobDefinitionArn, .revision, .status, .containerOrchestrationType)
+        ' job-def.json > new-job-def.json
+        aws batch register-job-definition --cli-input-json file://new-job-def.json
+
+    - name: Deploy Lambda
+      run: |
+        cd lambda
+        zip -r function.zip .
+        aws lambda update-function-code \
+          --function-name supermaket_batch_scheduler \
+          --zip-file fileb://function.zip
+
+    # Uncomment when ids job definitions are created in AWS Batch
+    # - name: Update Batch job definitions — ids image
     #   env:
-    #       AWS_LAMBDA_FUNC_NAME: aldi_scraper_lambda
-    #       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-    #       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-    #       AWS_DEFAULT_REGION: ${{ env.AWS_REGION }}
-    #       ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-    #       IMAGE_TAG: ${{ github.sha }}
+    #     IDS_IMAGE: ${{ steps.build-ids.outputs.image }}
+    #   run: |
+    #     update_job_def() {
+    #       local job_def_name=$1
+    #       aws batch describe-job-definitions \
+    #         --job-definition-name "$job_def_name" \
+    #         --status ACTIVE \
+    #         --query 'jobDefinitions[0]' > job-def.json
+    #       jq --arg IMAGE_URI "$IDS_IMAGE" '
+    #         .containerProperties.image = $IMAGE_URI |
+    #         del(.jobDefinitionArn, .revision, .status, .containerOrchestrationType)
+    #       ' job-def.json > new-job-def.json
+    #       aws batch register-job-definition --cli-input-json file://new-job-def.json
+    #     }
+    #     for job_def in aldi-ids tesco-ids supervalu-ids; do
+    #       update_job_def "$job_def"
+    #     done

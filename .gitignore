@@ -10,3 +10,6 @@ notebooks/*.json
 *.ipynb
 *.png
 .env
+*.jpg
+photos/
+.DS_Store

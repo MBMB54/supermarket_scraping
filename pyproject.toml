@@ -2,33 +2,51 @@
 name = "supermarket-scraping"
 version = "0.1.0"
 description = "Supermarket web scraping project"
-requires-python = ">=3.11"  
+requires-python = ">=3.11"
 dependencies = [
+    # Shared across all production scripts
+    "requests>=2.32.3",
+    "boto3>=1.0.0",
+    "python-dotenv>=1.2.1",
+    "polars[cloud]>=1.37.1",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+    "ruff>=0.14.13",
+]
+notebook = [
+    "duckdb>=1.4.3",
+    "ipykernel>=7.1.0",
     "pandas>=2.1.3",
     "pyarrow>=18.1.0",
-    "requests>=2.32.3",
-    "boto3",
-    "lxml>=6.0.2",
-    "ruff>=0.14.13",
-    "duckdb>=1.4.3",
-    "polars>=1.37.1",
+    "mlflow[genai]>=3.9.0",
+    "mlx-lm>=0.30.7",        # local Apple Silicon only
+    "numpy>=2.3.5",
+]
+scraper = [
+    "aiohttp>=3.13.3",
+    "brotli>=1.2.0",
     "playwright>=1.57.0",
+    "lxml>=6.0.2",
+]
+ids = [
+    # Dockerfile.ids: uv sync --group ids
+    # Gets base (requests, polars[cloud]) — no additional dependencies needed
+]
+ml = [
+    "scikit-learn>=1.8.0",
     "spacy>=3.8.11",
     "transformers>=5.0.0",
-    "brotli>=1.2.0",
-    "aiohttp>=3.13.3",
-    "pre-commit>=4.5.1",
-    "scikit-learn>=1.8.0",
-    "openai>=2.20.0",
-    "python-dotenv>=1.2.1",
-    "python-levenshtein>=0.27.3",
-    "mlflow[genai]>=3.9.0",
-    "numpy>=2.3.5",
-    "ipykernel>=7.1.0",
+    "sentence-transformers>=5.2.2",
     "rerankers>=0.10.0",
     "gliner2>=1.2.4",
-    "sentence-transformers>=5.2.2",
-    "mlx-lm>=0.30.7",
+    "python-levenshtein>=0.27.3",
+    "openai>=2.20.0",
+]
+test = [
+    "pytest>=8.0",
 ]
 
 
@@ -68,14 +86,3 @@ quote-style = "double"
 # Indent with spaces
 indent-style = "space"
 
-[dependency-groups]
-dev = [
-    "pre-commit>=4.5.1",
-    "ruff>=0.14",      # move from main deps
-]
-test = [
-    "pytest>=8.0",
-]
-notebook = [
-    "ipykernel",
-]
