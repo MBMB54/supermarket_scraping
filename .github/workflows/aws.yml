@@ -75,7 +75,7 @@ jobs:
         cd lambda
         zip -r function.zip .
         aws lambda update-function-code \
-          --function-name supermaket_batch_scheduler \
+          --function-name supermarket_batch_scheduler \
           --zip-file fileb://function.zip
 
     # Uncomment when ids job definitions are created in AWS Batch
