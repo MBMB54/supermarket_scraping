@@ -57,9 +57,13 @@ jobs:
         SCRAPER_IMAGE: ${{ steps.build-scraper.outputs.image }}
       run: |
         aws batch describe-job-definitions \
-          --job-definition-name ocado_scraper_definition \
+          --job-definition-name ocado_scraper_job_definition \
           --status ACTIVE \
           --query 'jobDefinitions[0]' > job-def.json
+        if [ "$(cat job-def.json)" = "null" ] || [ ! -s job-def.json ]; then
+          echo "ERROR: No active job definition found with name 'ocado_scraper_job_definition'"
+          exit 1
+        fi
         jq --arg IMAGE_URI "$SCRAPER_IMAGE" '
           .containerProperties.image = $IMAGE_URI |
           del(.jobDefinitionArn, .revision, .status, .containerOrchestrationType)

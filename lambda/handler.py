@@ -8,7 +8,7 @@ logger.setLevel(logging.INFO)
 
 REGION = os.environ.get("AWS_REGION", "eu-west-1")
 JOB_QUEUE = os.environ.get("BATCH_JOB_QUEUE", "getting-started-fargate-job-queue")
-SCRAPER_JOB_DEFINITION = os.environ.get("SCRAPER_JOB_DEFINITION", "ocado_scraper_definition")
+SCRAPER_JOB_DEFINITION = os.environ.get("SCRAPER_JOB_DEFINITION", "ocado_scraper_job_definition")
 TOTAL_CHUNKS = int(os.environ.get("TOTAL_CHUNKS", "5"))
 
 RETAILERS = ["aldi", "tesco", "supervalu"]
