@@ -4751,6 +4751,10 @@ dev = [
     { name = "pre-commit" },
     { name = "ruff" },
 ]
+ids = [
+    { name = "polars" },
+    { name = "requests" },
+]
 ml = [
     { name = "gliner2" },
     { name = "openai" },
@@ -4793,7 +4797,10 @@ dev = [
     { name = "pre-commit", specifier = ">=4.5.1" },
     { name = "ruff", specifier = ">=0.14.13" },
 ]
-ids = []
+ids = [
+    { name = "polars", extras = ["cloud"], specifier = ">=1.37.1" },
+    { name = "requests", specifier = ">=2.32.3" },
+]
 ml = [
     { name = "gliner2", specifier = ">=1.2.4" },
     { name = "openai", specifier = ">=2.20.0" },
