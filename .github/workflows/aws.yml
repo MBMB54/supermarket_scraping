@@ -78,23 +78,20 @@ jobs:
           --function-name supermarket_batch_scheduler \
           --zip-file fileb://function.zip
 
-    # Uncomment when ids job definitions are created in AWS Batch
-    # - name: Update Batch job definitions — ids image
-    #   env:
-    #     IDS_IMAGE: ${{ steps.build-ids.outputs.image }}
-    #   run: |
-    #     update_job_def() {
-    #       local job_def_name=$1
-    #       aws batch describe-job-definitions \
-    #         --job-definition-name "$job_def_name" \
-    #         --status ACTIVE \
-    #         --query 'jobDefinitions[0]' > job-def.json
-    #       jq --arg IMAGE_URI "$IDS_IMAGE" '
-    #         .containerProperties.image = $IMAGE_URI |
-    #         del(.jobDefinitionArn, .revision, .status, .containerOrchestrationType)
-    #       ' job-def.json > new-job-def.json
-    #       aws batch register-job-definition --cli-input-json file://new-job-def.json
-    #     }
-    #     for job_def in aldi-ids tesco-ids supervalu-ids; do
-    #       update_job_def "$job_def"
-    #     done
+    - name: Update Batch job definition — ids image
+      env:
+        IDS_IMAGE: ${{ steps.build-ids.outputs.image }}
+      run: |
+        aws batch describe-job-definitions \
+          --job-definition-name ie_supermarket_ids_job_definition \
+          --status ACTIVE \
+          --query 'jobDefinitions[0]' > job-def.json
+        if [ "$(cat job-def.json)" = "null" ] || [ ! -s job-def.json ]; then
+          echo "ERROR: No active job definition found with name 'ie_supermarket_ids_job_definition'"
+          exit 1
+        fi
+        jq --arg IMAGE_URI "$IDS_IMAGE" '
+          .containerProperties.image = $IMAGE_URI |
+          del(.jobDefinitionArn, .revision, .status, .containerOrchestrationType)
+        ' job-def.json > new-job-def.json
+        aws batch register-job-definition --cli-input-json file://new-job-def.json

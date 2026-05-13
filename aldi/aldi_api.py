@@ -8,20 +8,30 @@ from datetime import datetime
 
 import aiohttp
 import boto3
+import polars as pl
 
 logging.basicConfig(level=logging.NOTSET)
 handle = "aldi_api"
 logger = logging.getLogger(handle)
 
+BUCKET = "ie-supermarket-data"
 CONCURRENT_REQUESTS = 5
 DELAY_BETWEEN_BATCHES = 2
 USER_AGENT_STRINGS = [
     "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36",
     "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36",
 ]
-with open("ie_aldi_ids.csv") as f:
-    next(f)  # Skip header
-    ALDI_IDS = f.read().splitlines()
+
+today = datetime.now(tz=datetime.UTC).strftime("%Y-%m-%d")
+ALDI_IDS = (
+    pl.read_parquet(
+        f"s3://{BUCKET}/raw/aldi/ids/date={today}/*.parquet",
+        storage_options={"aws_region": "eu-west-1"},
+    )
+    .get_column("product_id")
+    .to_list()
+)
+logger.info(f"Loaded {len(ALDI_IDS)} aldi product IDs from S3")
 
 
 def get_headers():
