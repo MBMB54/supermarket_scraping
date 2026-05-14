@@ -4,6 +4,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
+ENV UV_PROJECT_ENVIRONMENT=/usr/local
+
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project --group scraper
 
@@ -13,4 +15,4 @@ COPY supervalu/supervalu_api.py ./
 COPY aldi/aldi_api.py ./
 COPY dunnes/dunnes_api.py ./
 
-CMD ["/app/.venv/bin/python", "tesco_api.py"]
+CMD ["python", "tesco_api.py"]

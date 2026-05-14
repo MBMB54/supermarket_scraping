@@ -4,9 +4,11 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
+ENV UV_PROJECT_ENVIRONMENT=/usr/local
+
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project --group ids
 
 COPY aldi/aldi_ids.py ./
 
-CMD ["/app/.venv/bin/python", "aldi_ids.py"]
+CMD ["python", "aldi_ids.py"]
