@@ -2,6 +2,7 @@ import datetime
 import logging
 import re
 
+import boto3
 import polars as pl
 import requests
 
@@ -49,6 +50,16 @@ def write_to_parquet_and_upload(records: list[dict]) -> str:
     return s3_uri
 
 
+def _already_ran_today() -> bool:
+    s3 = boto3.client("s3")
+    today = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%d")
+    resp = s3.list_objects_v2(Bucket=BUCKET, Prefix=f"raw/{RETAILER}/ids/date={today}/")
+    return resp.get("KeyCount", 0) > 0
+
+
 if __name__ == "__main__":
-    records = scrape_aldi_product_ids()
-    write_to_parquet_and_upload(records)
+    if _already_ran_today():
+        logger.info("IDs already scraped today — skipping")
+    else:
+        records = scrape_aldi_product_ids()
+        write_to_parquet_and_upload(records)

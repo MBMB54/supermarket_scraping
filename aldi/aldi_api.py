@@ -9,6 +9,7 @@ import random
 import aiohttp
 import boto3
 import polars as pl
+from botocore.exceptions import ClientError
 
 logging.basicConfig(level=logging.NOTSET)
 handle = "aldi_api"
@@ -17,18 +18,20 @@ logger = logging.getLogger(handle)
 BUCKET = "ie-supermarket-data"
 CONCURRENT_REQUESTS = 5
 DELAY_BETWEEN_BATCHES = 2
-USER_AGENT_STRINGS = [
-    "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36",
+USER_AGENTS = [
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
 ]
 
-today = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%Y-%m-%d")
+today = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%d")
 ALDI_IDS = (
     pl.read_parquet(
         f"s3://{BUCKET}/raw/aldi/ids/date={today}/*.parquet",
         storage_options={"aws_region": "eu-west-1"},
     )
     .get_column("product_id")
+    .unique()
     .to_list()
 )
 logger.info(f"Loaded {len(ALDI_IDS)} aldi product IDs from S3")
@@ -36,7 +39,7 @@ logger.info(f"Loaded {len(ALDI_IDS)} aldi product IDs from S3")
 
 def get_headers():
     return {
-        "User-Agent": random.choice(USER_AGENT_STRINGS),
+        "User-Agent": random.choice(USER_AGENTS),
         "Accept": "*/*",
         "Accept-Language": "en-IE",
         "Accept-Encoding": "gzip, deflate, br, zstd",
@@ -48,75 +51,113 @@ def get_headers():
     }
 
 
+def load_checkpoint(chunk_id: int, folder_date: str) -> set[str]:
+    s3 = boto3.client("s3")
+    key = f"raw/aldi/{folder_date}/checkpoints/chunk_{chunk_id}.json"
+    try:
+        obj = s3.get_object(Bucket=BUCKET, Key=key)
+        data = json.loads(obj["Body"].read())
+        return set(data["processed_ids"])
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "NoSuchKey":
+            return set()
+        raise
+
+
+def save_checkpoint(chunk_id: int, folder_date: str, processed_ids: list[str]) -> None:
+    s3 = boto3.client("s3")
+    key = f"raw/aldi/{folder_date}/checkpoints/chunk_{chunk_id}.json"
+    s3.put_object(
+        Bucket=BUCKET,
+        Key=key,
+        Body=json.dumps({"processed_ids": processed_ids}),
+        ContentType="application/json",
+    )
+
+
+def delete_checkpoint(chunk_id: int, folder_date: str) -> None:
+    s3 = boto3.client("s3")
+    key = f"raw/aldi/{folder_date}/checkpoints/chunk_{chunk_id}.json"
+    try:
+        s3.delete_object(Bucket=BUCKET, Key=key)
+    except Exception:
+        pass
+
+
 async def fetch_product(
     session: aiohttp.ClientSession, product_id: str, semaphore: asyncio.Semaphore
 ) -> dict:
     async with semaphore:
         await asyncio.sleep(0.5)
-        async with session.get(
-            f"https://api.aldi.ie/v2/products/{product_id}",
-            headers=get_headers(),
-        ) as response:
-            if response.status == 200:
-                data = await response.json()
-                # Check if product actually exists in response
-                if data.get("data"):
+        try:
+            async with session.get(
+                f"https://api.aldi.ie/v2/products/{product_id}",
+                headers=get_headers(),
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
                     return {
                         "product_id": product_id,
                         "data": data.get("data"),
                         "error": None,
                     }
+                return {"product_id": product_id, "data": None, "error": f"HTTP {response.status}"}
+        except Exception as e:
+            return {"product_id": product_id, "data": None, "error": str(e)}
 
 
-async def fetch_all_products(product_ids: list[str]) -> list[dict]:
+async def fetch_all_products(
+    product_ids: list[str], chunk_id: int, folder_date: str, timestamp: str
+) -> tuple[int, int]:
     semaphore = asyncio.Semaphore(CONCURRENT_REQUESTS)
+    s3 = boto3.client("s3")
     async with aiohttp.ClientSession() as session:
         tasks = [fetch_product(session, product_id, semaphore) for product_id in product_ids]
-        results = []
-        # Process in batches for progress tracking
+        total_successes = total_failures = 0
+        processed_ids: list[str] = []
         batch_size = 100
-        for i in range(0, len(tasks), batch_size):
+        for batch_num, i in enumerate(range(0, len(tasks), batch_size)):
             batch = tasks[i : i + batch_size]
             batch_results = await asyncio.gather(*batch)
-            results.extend(batch_results)
-            # Progress update
+
+            batch_filename = f"aldi_raw_{timestamp}_chunk{chunk_id}_batch{batch_num:04d}.jsonl.gz"
+            tmp_path = f"/tmp/{batch_filename}"
+            with gzip.open(tmp_path, "wt", encoding="utf-8") as f:
+                for result in batch_results:
+                    f.write(json.dumps(result) + "\n")
+            s3.upload_file(tmp_path, BUCKET, f"raw/aldi/{folder_date}/{batch_filename}")
+
+            total_successes += sum(1 for r in batch_results if r["data"])
+            total_failures += sum(1 for r in batch_results if r["error"])
+            processed_ids.extend(r["product_id"] for r in batch_results)
+            save_checkpoint(chunk_id, folder_date, processed_ids)
             logger.info(f"Processed {min(i + batch_size, len(tasks))}/{len(tasks)} products")
-            # Small delay between batches so requests don't get blocked
             await asyncio.sleep(DELAY_BETWEEN_BATCHES)
-        return results
+        return total_successes, total_failures
 
 
 chunk_id = int(os.environ["CHUNK_ID"])
 total_chunks = int(os.environ["TOTAL_CHUNKS"])
 logger.info(f"Scraping chunk {chunk_id}/{total_chunks}")
-# Each task scrapes its portion
+
+now = datetime.datetime.now(tz=datetime.UTC)
+folder_date = now.strftime("%Y-%m-%d")
+timestamp = now.strftime("%Y%m%d_%H%M%S")
+
 chunk_size = len(ALDI_IDS) // total_chunks
-logger.info(f"Chunk size : {chunk_size}")
 start = chunk_id * chunk_size
 end = start + chunk_size if chunk_id < total_chunks - 1 else len(ALDI_IDS)
-logger.info(f"Calling API for product id {start} to {end}")
 product_ids = ALDI_IDS[start:end]
 
-results = asyncio.run(fetch_all_products(product_ids))
+already_processed = load_checkpoint(chunk_id, folder_date)
+if already_processed:
+    logger.info(f"Resuming from checkpoint: {len(already_processed)} already processed")
+    product_ids = [pid for pid in product_ids if pid not in already_processed]
 
-# Filter successes and failures
-successes = [r for r in results if r["data"]]
-failures = [r for r in results if r["error"]]
+logger.info(f"Fetching {len(product_ids)} products (chunk {start}:{end})")
 
-logger.info(f"Success: {len(successes)}, Failed: {len(failures)}")
+successes, failures = asyncio.run(fetch_all_products(product_ids, chunk_id, folder_date, timestamp))
 
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-folder_date = datetime.now().strftime("%Y-%m-%d")
-filename = f"aldi_raw_{timestamp}_chunk{chunk_id}.jsonl.gz"
-aws_tmp_location = f"/tmp/{filename}"
-s3_raw_upload_location = f"raw/aldi/{folder_date}/{filename}"
-with gzip.open(aws_tmp_location, "wt", encoding="utf-8") as f:
-    for result in results:
-        f.write(json.dumps(result) + "\n")
-
-s3 = boto3.client("s3")
-
-s3.upload_file(aws_tmp_location, "ie-supermarket-data", s3_raw_upload_location)
-
-
-logger.info(f"Saved {len(results)} products to {filename}")
+logger.info(f"Success: {successes}, Failed: {failures}")
+delete_checkpoint(chunk_id, folder_date)
+logger.info(f"Completed chunk {chunk_id}")
