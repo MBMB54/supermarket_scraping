@@ -5,7 +5,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --group scraper
+RUN uv sync --frozen --no-dev --no-install-project --group scraper
 
 COPY tesco/tesco_api.py ./
 COPY tesco/graphql_query.txt ./
