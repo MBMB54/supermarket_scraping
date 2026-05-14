@@ -6,8 +6,8 @@ import logging
 import os
 import random
 
-import aiohttp
 import boto3
+from curl_cffi.requests import AsyncSession
 import polars as pl
 from botocore.exceptions import ClientError
 
@@ -85,23 +85,23 @@ def delete_checkpoint(chunk_id: int, folder_date: str) -> None:
 
 
 async def fetch_product(
-    session: aiohttp.ClientSession, product_id: str, semaphore: asyncio.Semaphore
+    session: AsyncSession, product_id: str, semaphore: asyncio.Semaphore
 ) -> dict:
     async with semaphore:
         await asyncio.sleep(0.5)
         try:
-            async with session.get(
+            response = await session.get(
                 f"https://api.aldi.ie/v2/products/{product_id}",
                 headers=get_headers(),
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return {
-                        "product_id": product_id,
-                        "data": data.get("data"),
-                        "error": None,
-                    }
-                return {"product_id": product_id, "data": None, "error": f"HTTP {response.status}"}
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    "product_id": product_id,
+                    "data": data.get("data"),
+                    "error": None,
+                }
+            return {"product_id": product_id, "data": None, "error": f"HTTP {response.status_code}"}
         except Exception as e:
             return {"product_id": product_id, "data": None, "error": str(e)}
 
@@ -111,7 +111,7 @@ async def fetch_all_products(
 ) -> tuple[int, int]:
     semaphore = asyncio.Semaphore(CONCURRENT_REQUESTS)
     s3 = boto3.client("s3")
-    async with aiohttp.ClientSession() as session:
+    async with AsyncSession(impersonate="chrome120") as session:
         tasks = [fetch_product(session, product_id, semaphore) for product_id in product_ids]
         total_successes = total_failures = 0
         processed_ids: list[str] = []

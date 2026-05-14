@@ -24,12 +24,14 @@ notebook = [
     "mlflow[genai]>=3.9.0",
     "mlx-lm>=0.30.7",        # local Apple Silicon only
     "numpy>=2.3.5",
+    "curl-cffi>=0.15.0",
 ]
 scraper = [
     "aiohttp>=3.13.3",
     "brotli>=1.2.0",
     "playwright>=1.57.0",
     "lxml>=6.0.2",
+    "curl-cffi>=0.15.0",
 ]
 ids = [
     # Dockerfile.ids: uv sync --group ids
