@@ -8,6 +8,7 @@ ENV UV_PROJECT_ENVIRONMENT=/usr/local
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project --group scraper
+RUN playwright install chromium --with-deps
 
 COPY tesco/tesco_api.py ./
 COPY tesco/tesco_ids.py ./
