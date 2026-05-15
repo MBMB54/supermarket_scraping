@@ -136,9 +136,9 @@ class TescoScraper:
         return math.ceil(total_products / 48)
 
     async def extract_page_hrefs(self) -> list:
-        await self.page.locator(".WL_DZkV_Rvg0WJi").last().wait_for()
-        return await self.page.locator(".WL_DZkV_Rvg0WJi a").evaluate_all(
-            "els => [...new Set(els.map(el => el.href).filter(h => h.includes('/products/')))]"
+        await self.page.locator("a[href*='/products/']").first.wait_for()
+        return await self.page.evaluate(
+            "() => [...new Set([...document.querySelectorAll('a[href*=\"/products/\"]')].map(el => el.href))]"
         )
 
     def build_url(self, category: str, page_num: int) -> str:

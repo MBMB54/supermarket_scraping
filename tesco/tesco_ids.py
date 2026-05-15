@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass, field
 import boto3
 import polars as pl
 from botocore.exceptions import ClientError
-from playwright.async_api import async_playwright
+from patchright.async_api import async_playwright
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tesco_ids")
@@ -138,9 +138,9 @@ def upload_ids(hrefs: list, folder_date: str, timestamp: str) -> str:
 
 
 async def extract_page_hrefs(page) -> list:
-    await page.locator(".WL_DZkV_Rvg0WJi").last.wait_for()
-    return await page.locator(".WL_DZkV_Rvg0WJi a").evaluate_all(
-        "els => [...new Set(els.map(el => el.href).filter(h => h.includes('/products/')))]"
+    await page.locator("a[href*='/products/']").first.wait_for()
+    return await page.evaluate(
+        "() => [...new Set([...document.querySelectorAll('a[href*=\"/products/\"]')].map(el => el.href))]"
     )
 
 
@@ -150,18 +150,12 @@ async def scrape_categories(folder_date: str) -> list:
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=True,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-dev-shm-usage",
-                "--no-sandbox",
-            ],
+            channel="chrome",
+            args=["--disable-dev-shm-usage", "--no-sandbox"],
         )
         context = await browser.new_context(
             user_agent=random.choice(USER_AGENTS),
             viewport={"width": 1920, "height": 1080},
-        )
-        await context.add_init_script(
-            "Object.defineProperty(navigator, 'webdriver', { get: () => undefined })"
         )
         page = await context.new_page()
 
