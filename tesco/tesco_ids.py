@@ -138,7 +138,15 @@ def upload_ids(hrefs: list, folder_date: str, timestamp: str) -> str:
 
 
 async def extract_page_hrefs(page) -> list:
-    await page.locator("a[href*='/products/']").first.wait_for()
+    try:
+        await page.locator("a[href*='/products/']").first.wait_for()
+    except Exception:
+        title = await page.title()
+        screenshot_key = f"raw/tesco/debug/extract_page_hrefs_error_{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d_%H%M%S')}.png"
+        screenshot_bytes = await page.screenshot()
+        boto3.client("s3").put_object(Bucket=BUCKET, Key=screenshot_key, Body=screenshot_bytes, ContentType="image/png")
+        logger.error(f"Timed out waiting for product links. Title: '{title}'. Screenshot: s3://{BUCKET}/{screenshot_key}")
+        raise
     return await page.evaluate(
         "() => [...new Set([...document.querySelectorAll('a[href*=\"/products/\"]')].map(el => el.href))]"
     )
@@ -199,7 +207,7 @@ async def scrape_categories(folder_date: str, categories: list = CATEGORIES, pag
                 await page.goto(
                     f"https://www.tesco.ie/groceries/en-IE/shop/{category}/all?sortBy=relevance&page={page_num}&count=48#top",
                     timeout=0,
-                    wait_until="domcontentloaded",
+                    wait_until="load",
                 )
                 hrefs = await extract_page_hrefs(page)
                 progress.add_hrefs(hrefs, page_num)
@@ -225,7 +233,7 @@ if __name__ == "__main__":
     if os.environ.get("TEST_MODE"):
         # Scrape one page of one category to validate the full pipeline
         folder_date = f"test-{folder_date}"
-        hrefs = asyncio.run(scrape_categories(folder_date, categories=["fresh-food"], page_limit=1))
+        hrefs = asyncio.run(scrape_categories(folder_date, categories=["fresh-food"], page_limit=2))
         upload_ids(hrefs, folder_date, timestamp)
         delete_progress(folder_date)
     elif _already_ran_today(folder_date):
