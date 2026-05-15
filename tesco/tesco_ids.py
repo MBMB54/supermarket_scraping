@@ -3,6 +3,7 @@ import datetime
 import json
 import logging
 import math
+import os
 import random
 import re
 from dataclasses import asdict, dataclass, field
@@ -142,10 +143,14 @@ async def extract_page_hrefs(page) -> list:
         await page.locator("a[href*='/products/']").first.wait_for()
     except Exception:
         title = await page.title()
-        screenshot_key = f"raw/tesco/debug/extract_page_hrefs_error_{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d_%H%M%S')}.png"
-        screenshot_bytes = await page.screenshot()
-        boto3.client("s3").put_object(Bucket=BUCKET, Key=screenshot_key, Body=screenshot_bytes, ContentType="image/png")
-        logger.error(f"Timed out waiting for product links. Title: '{title}'. Screenshot: s3://{BUCKET}/{screenshot_key}")
+        logger.error(f"Timed out waiting for product links. Title: '{title}'")
+        try:
+            screenshot_key = f"raw/tesco/debug/extract_page_hrefs_error_{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d_%H%M%S')}.png"
+            screenshot_bytes = await page.screenshot()
+            boto3.client("s3").put_object(Bucket=BUCKET, Key=screenshot_key, Body=screenshot_bytes, ContentType="image/png")
+            logger.error(f"Screenshot: s3://{BUCKET}/{screenshot_key}")
+        except Exception as upload_err:
+            logger.error(f"Failed to upload screenshot: {upload_err}")
         raise
     return await page.evaluate(
         "() => [...new Set([...document.querySelectorAll('a[href*=\"/products/\"]')].map(el => el.href))]"
@@ -224,7 +229,7 @@ async def scrape_categories(folder_date: str, categories: list = CATEGORIES, pag
 
 
 if __name__ == "__main__":
-    import os
+    logger.info(f"TEST_MODE={os.environ.get('TEST_MODE')!r}")
 
     now = datetime.datetime.now(tz=datetime.UTC)
     folder_date = now.strftime("%Y-%m-%d")
