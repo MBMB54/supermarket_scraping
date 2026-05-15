@@ -158,6 +158,7 @@ async def scrape_categories(folder_date: str) -> list:
             viewport={"width": 1920, "height": 1080},
         )
         page = await context.new_page()
+        cookies_accepted = False
 
         for category in CATEGORIES:
             if category in progress.completed_categories:
@@ -173,21 +174,22 @@ async def scrape_categories(folder_date: str) -> list:
             await page.goto(
                 f"https://www.tesco.ie/groceries/en-IE/shop/{category}/all?sortBy=relevance&page={start_page}&count=48#top",
                 timeout=0,
-                wait_until="load" if start_page == 1 else "domcontentloaded",
+                wait_until="load",
             )
 
-            if start_page == 1:
+            if not cookies_accepted:
                 try:
                     await page.get_by_text("Accept all").click(timeout=5000)
                     await asyncio.sleep(1)
+                    cookies_accepted = True
                 except Exception:
                     pass
 
+            # Wait for product links before reading pagination — ensures React has rendered
+            hrefs = await extract_page_hrefs(page)
             pagination_string = await page.get_by_test_id("pagination-result-count").text_content()
             total_products = int(re.findall(r"\d+", pagination_string.replace(",", ""))[-1])
             max_pages = math.ceil(total_products / 48)
-
-            hrefs = await extract_page_hrefs(page)
             progress.add_hrefs(hrefs, start_page)
             save_progress(progress, folder_date)
             logger.info(f"{category} - Page {start_page}/{max_pages} - Total hrefs: {len(progress.hrefs)}")
