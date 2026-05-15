@@ -144,7 +144,7 @@ async def extract_page_hrefs(page) -> list:
     )
 
 
-async def scrape_categories(folder_date: str) -> list:
+async def scrape_categories(folder_date: str, categories: list = CATEGORIES, page_limit: int | None = None) -> list:
     progress = load_progress(folder_date)
 
     async with async_playwright() as p:
@@ -160,7 +160,7 @@ async def scrape_categories(folder_date: str) -> list:
         page = await context.new_page()
         cookies_accepted = False
 
-        for category in CATEGORIES:
+        for category in categories:
             if category in progress.completed_categories:
                 logger.info(f"Skipping completed: {category}")
                 continue
@@ -194,7 +194,7 @@ async def scrape_categories(folder_date: str) -> list:
             save_progress(progress, folder_date)
             logger.info(f"{category} - Page {start_page}/{max_pages} - Total hrefs: {len(progress.hrefs)}")
 
-            for page_num in range(start_page + 1, max_pages + 1):
+            for page_num in range(start_page + 1, (min(max_pages, page_limit) if page_limit else max_pages) + 1):
                 await asyncio.sleep(random.uniform(2, 5))
                 await page.goto(
                     f"https://www.tesco.ie/groceries/en-IE/shop/{category}/all?sortBy=relevance&page={page_num}&count=48#top",
@@ -216,11 +216,19 @@ async def scrape_categories(folder_date: str) -> list:
 
 
 if __name__ == "__main__":
+    import os
+
     now = datetime.datetime.now(tz=datetime.UTC)
     folder_date = now.strftime("%Y-%m-%d")
     timestamp = now.strftime("%Y%m%d_%H%M%S")
 
-    if _already_ran_today(folder_date):
+    if os.environ.get("TEST_MODE"):
+        # Scrape one page of one category to validate the full pipeline
+        folder_date = f"test-{folder_date}"
+        hrefs = asyncio.run(scrape_categories(folder_date, categories=["fresh-food"], page_limit=1))
+        upload_ids(hrefs, folder_date, timestamp)
+        delete_progress(folder_date)
+    elif _already_ran_today(folder_date):
         logger.info("IDs already scraped today — skipping")
     else:
         hrefs = asyncio.run(scrape_categories(folder_date))
