@@ -233,7 +233,7 @@ if __name__ == "__main__":
     if os.environ.get("TEST_MODE"):
         # Scrape one page of one category to validate the full pipeline
         folder_date = f"test-{folder_date}"
-        hrefs = asyncio.run(scrape_categories(folder_date, categories=["fresh-food"], page_limit=2))
+        hrefs = asyncio.run(scrape_categories(folder_date, categories=["fresh-food"], page_limit=5))
         upload_ids(hrefs, folder_date, timestamp)
         delete_progress(folder_date)
     elif _already_ran_today(folder_date):
