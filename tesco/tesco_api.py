@@ -1,15 +1,16 @@
-# Call Tesco API
 import asyncio
+import datetime
 import gzip
 import json
 import logging
 import os
 import random
 import uuid
-from datetime import datetime
 
 import aiohttp
 import boto3
+import polars as pl
+from botocore.exceptions import ClientError
 
 logging.basicConfig(level=logging.NOTSET)
 handle = "tesco_api"
@@ -17,9 +18,8 @@ logger = logging.getLogger(handle)
 
 with open("graphql_query.txt") as file:
     TESCO_GRAPHQL_QUERY = file.read().rstrip()
-with open("ie_tesco_ids.csv") as f:
-    next(f)  # Skip header
-    TESCO_IDS = f.read().splitlines()
+
+BUCKET = "ie-supermarket-data"
 CONCURRENT_REQUESTS = 5
 DELAY_BETWEEN_BATCHES = 2
 API_KEY = "TvOSZJHlEk0pjniDGQFAc9Q59WGAR4dA"
@@ -27,6 +27,19 @@ USER_AGENT_STRINGS = [
     "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36",
     "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36",
 ]
+
+today = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%d")
+TESCO_IDS = (
+    pl.read_parquet(
+        f"s3://{BUCKET}/raw/tesco/ids/date={today}/*.parquet",
+        storage_options={"aws_region": "eu-west-1"},
+    )
+    .get_column("id")
+    .cast(pl.String)
+    .unique()
+    .to_list()
+)
+logger.info(f"Loaded {len(TESCO_IDS)} tesco product IDs from S3")
 
 
 def get_headers():
@@ -55,7 +68,7 @@ def build_payload(tpnc: str) -> list:
                 "markRecentlyViewed": False,
                 "includeMatchingProducts": True,
                 "tpnc": tpnc,
-                "skipReviews": True,  # Skip reviews to speed up response
+                "skipReviews": True,
                 "offset": 0,
                 "count": 10,
                 "sellersType": "ALL",
@@ -68,12 +81,45 @@ def build_payload(tpnc: str) -> list:
     ]
 
 
+def load_checkpoint(chunk_id: int, folder_date: str) -> set[str]:
+    s3 = boto3.client("s3")
+    key = f"raw/tesco/{folder_date}/checkpoints/chunk_{chunk_id}.json"
+    try:
+        obj = s3.get_object(Bucket=BUCKET, Key=key)
+        data = json.loads(obj["Body"].read())
+        return set(data["processed_ids"])
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "NoSuchKey":
+            return set()
+        raise
+
+
+def save_checkpoint(chunk_id: int, folder_date: str, processed_ids: list[str]) -> None:
+    s3 = boto3.client("s3")
+    key = f"raw/tesco/{folder_date}/checkpoints/chunk_{chunk_id}.json"
+    s3.put_object(
+        Bucket=BUCKET,
+        Key=key,
+        Body=json.dumps({"processed_ids": processed_ids}),
+        ContentType="application/json",
+    )
+
+
+def delete_checkpoint(chunk_id: int, folder_date: str) -> None:
+    s3 = boto3.client("s3")
+    key = f"raw/tesco/{folder_date}/checkpoints/chunk_{chunk_id}.json"
+    try:
+        s3.delete_object(Bucket=BUCKET, Key=key)
+    except Exception:
+        pass
+
+
 async def fetch_product(
     session: aiohttp.ClientSession, tpnc: str, semaphore: asyncio.Semaphore
 ) -> dict:
     async with semaphore:
+        await asyncio.sleep(0.5)
         try:
-            await asyncio.sleep(0.5)
             async with session.post(
                 "https://xapi.tesco.com/", headers=get_headers(), json=build_payload(tpnc)
             ) as response:
@@ -84,61 +130,63 @@ async def fetch_product(
                         "data": data[0].get("data", {}).get("product"),
                         "error": None,
                     }
-                else:
-                    return {"tpnc": tpnc, "data": None, "error": f"HTTP {response.status}"}
+                return {"tpnc": tpnc, "data": None, "error": f"HTTP {response.status}"}
         except Exception as e:
             return {"tpnc": tpnc, "data": None, "error": str(e)}
 
 
-async def fetch_all_products(product_ids: list[str]) -> list[dict]:
+async def fetch_all_products(
+    product_ids: list[str], chunk_id: int, folder_date: str, timestamp: str
+) -> tuple[int, int]:
     semaphore = asyncio.Semaphore(CONCURRENT_REQUESTS)
+    s3 = boto3.client("s3")
     async with aiohttp.ClientSession() as session:
         tasks = [fetch_product(session, tpnc, semaphore) for tpnc in product_ids]
-        results = []
-        # Process in batches for progress tracking
+        total_successes = total_failures = 0
+        processed_ids: list[str] = []
         batch_size = 100
-        for i in range(0, len(tasks), batch_size):
+        for batch_num, i in enumerate(range(0, len(tasks), batch_size)):
             batch = tasks[i : i + batch_size]
             batch_results = await asyncio.gather(*batch)
-            results.extend(batch_results)
-            # Progress update
+
+            batch_filename = f"tesco_raw_{timestamp}_chunk{chunk_id}_batch{batch_num:04d}.jsonl.gz"
+            tmp_path = f"/tmp/{batch_filename}"
+            with gzip.open(tmp_path, "wt", encoding="utf-8") as f:
+                for result in batch_results:
+                    f.write(json.dumps(result) + "\n")
+            s3.upload_file(tmp_path, BUCKET, f"raw/tesco/{folder_date}/{batch_filename}")
+
+            total_successes += sum(1 for r in batch_results if r["data"])
+            total_failures += sum(1 for r in batch_results if r["error"])
+            processed_ids.extend(r["tpnc"] for r in batch_results)
+            save_checkpoint(chunk_id, folder_date, processed_ids)
             logger.info(f"Processed {min(i + batch_size, len(tasks))}/{len(tasks)} products")
-            # Small delay between batches so requests don't get blocked
             await asyncio.sleep(DELAY_BETWEEN_BATCHES)
-        return results
+        return total_successes, total_failures
 
 
 chunk_id = int(os.environ["CHUNK_ID"])
 total_chunks = int(os.environ["TOTAL_CHUNKS"])
 logger.info(f"Scraping chunk {chunk_id}/{total_chunks}")
-# Each task scrapes its portion
+
+now = datetime.datetime.now(tz=datetime.UTC)
+folder_date = now.strftime("%Y-%m-%d")
+timestamp = now.strftime("%Y%m%d_%H%M%S")
+
 chunk_size = len(TESCO_IDS) // total_chunks
-logger.info(f"Chunk size : {chunk_size}")
 start = chunk_id * chunk_size
 end = start + chunk_size if chunk_id < total_chunks - 1 else len(TESCO_IDS)
-logger.info(f"Calling API for product id {start} to {end}")
 product_ids = TESCO_IDS[start:end]
 
-results = asyncio.run(fetch_all_products(product_ids))
+already_processed = load_checkpoint(chunk_id, folder_date)
+if already_processed:
+    logger.info(f"Resuming from checkpoint: {len(already_processed)} already processed")
+    product_ids = [tpnc for tpnc in product_ids if tpnc not in already_processed]
 
-# Filter successes and failures
-successes = [r for r in results if r["data"]]
-failures = [r for r in results if r["error"]]
+logger.info(f"Fetching {len(product_ids)} products (chunk {start}:{end})")
 
-logger.info(f"Success: {len(successes)}, Failed: {len(failures)}")
+successes, failures = asyncio.run(fetch_all_products(product_ids, chunk_id, folder_date, timestamp))
 
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-folder_date = datetime.now().strftime("%Y-%m-%d")
-filename = f"tesco_raw_{timestamp}_chunk{chunk_id}.jsonl.gz"
-aws_tmp_location = f"/tmp/{filename}"
-s3_raw_upload_location = f"raw/tesco/{folder_date}/{filename}"
-with gzip.open(aws_tmp_location, "wt", encoding="utf-8") as f:
-    for result in results:
-        f.write(json.dumps(result) + "\n")
-
-s3 = boto3.client("s3")
-
-s3.upload_file(aws_tmp_location, "ie-supermarket-data", s3_raw_upload_location)
-
-
-logger.info(f"Saved {len(results)} products to {filename}")
+logger.info(f"Success: {successes}, Failed: {failures}")
+delete_checkpoint(chunk_id, folder_date)
+logger.info(f"Completed chunk {chunk_id}")

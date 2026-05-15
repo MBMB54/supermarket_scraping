@@ -25,6 +25,7 @@ notebook = [
     "mlx-lm>=0.30.7",        # local Apple Silicon only
     "numpy>=2.3.5",
     "curl-cffi>=0.15.0",
+    "playwright>=1.57.0",
 ]
 scraper = [
     "aiohttp>=3.13.3",

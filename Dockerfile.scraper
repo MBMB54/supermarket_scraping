@@ -10,6 +10,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project --group scraper
 
 COPY tesco/tesco_api.py ./
+COPY tesco/tesco_ids.py ./
 COPY tesco/graphql_query.txt ./
 COPY supervalu/supervalu_api.py ./
 COPY aldi/aldi_api.py ./
