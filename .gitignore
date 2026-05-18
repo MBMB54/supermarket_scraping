@@ -14,3 +14,5 @@ notebooks/*.json
 *.jpg
 photos/
 .DS_Store
+*.csv
+*.log
