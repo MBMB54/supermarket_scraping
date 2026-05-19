@@ -30,10 +30,9 @@ USER_AGENT_STRINGS = [
     "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36",
 ]
 
-today = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%d")
 TESCO_IDS = (
     pl.read_parquet(
-        f"s3://{BUCKET}/raw/tesco/ids/date={today}/*.parquet",
+        f"s3://{BUCKET}/raw/tesco/ids/latest/tesco_product_ids.parquet",
         storage_options={"aws_region": "eu-west-1"},
     )
     .get_column("id")

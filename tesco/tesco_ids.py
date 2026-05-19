@@ -133,8 +133,12 @@ def upload_ids(hrefs: list, folder_date: str, timestamp: str) -> str:
         pl.lit(RETAILER).alias("retailer"),
     )
     df.write_parquet(s3_uri, compression="snappy", storage_options={"aws_region": "eu-west-1"})
-
     logger.info(f"Uploaded {len(ids)} product IDs to {s3_uri}")
+
+    latest_uri = f"s3://{BUCKET}/raw/{RETAILER}/ids/latest/tesco_product_ids.parquet"
+    df.write_parquet(latest_uri, compression="snappy", storage_options={"aws_region": "eu-west-1"})
+    logger.info(f"Updated latest IDs at {latest_uri}")
+
     return s3_uri
 
 
