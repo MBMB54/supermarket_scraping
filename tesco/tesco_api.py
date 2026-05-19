@@ -38,6 +38,7 @@ TESCO_IDS = (
     .get_column("id")
     .cast(pl.String)
     .unique()
+    .sort()
     .to_list()
 )
 logger.info(f"Loaded {len(TESCO_IDS)} tesco product IDs from S3")
