@@ -12,7 +12,9 @@ import boto3
 import polars as pl
 from botocore.exceptions import ClientError
 
-logging.basicConfig(level=logging.NOTSET)
+logging.basicConfig(level=logging.INFO)
+logging.getLogger("boto3").setLevel(logging.WARNING)
+logging.getLogger("botocore").setLevel(logging.WARNING)
 handle = "tesco_api"
 logger = logging.getLogger(handle)
 
