@@ -47,6 +47,11 @@ def write_to_parquet_and_upload(records: list[dict]) -> str:
     )
 
     logger.info(f"Uploaded {len(records)} product IDs to {s3_uri}")
+
+    latest_uri = f"s3://{BUCKET}/raw/{RETAILER}/ids/latest/aldi_product_ids.parquet"
+    df.write_parquet(latest_uri, compression="snappy", storage_options={"aws_region": "eu-west-1"})
+    logger.info(f"Updated latest IDs at {latest_uri}")
+
     return s3_uri
 
 

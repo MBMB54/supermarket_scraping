@@ -11,7 +11,9 @@ from curl_cffi.requests import AsyncSession
 import polars as pl
 from botocore.exceptions import ClientError
 
-logging.basicConfig(level=logging.NOTSET)
+logging.basicConfig(level=logging.INFO)
+logging.getLogger("boto3").setLevel(logging.WARNING)
+logging.getLogger("botocore").setLevel(logging.WARNING)
 handle = "aldi_api"
 logger = logging.getLogger(handle)
 
@@ -24,14 +26,14 @@ USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
 ]
 
-today = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%d")
 ALDI_IDS = (
     pl.read_parquet(
-        f"s3://{BUCKET}/raw/aldi/ids/date={today}/*.parquet",
+        f"s3://{BUCKET}/raw/aldi/ids/latest/aldi_product_ids.parquet",
         storage_options={"aws_region": "eu-west-1"},
     )
     .get_column("product_id")
     .unique()
+    .sort()
     .to_list()
 )
 logger.info(f"Loaded {len(ALDI_IDS)} aldi product IDs from S3")
