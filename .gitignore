@@ -16,3 +16,4 @@ photos/
 .DS_Store
 *.csv
 *.log
+.vscode
