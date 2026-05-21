@@ -82,4 +82,33 @@ def lambda_handler(event, context):
         submitted.append({"stage": "scraper", "retailer": "supervalu", "chunkId": chunk_id, "jobId": response["jobId"]})
         logger.info(f"Submitted supervalu chunk {chunk_id}/{TOTAL_CHUNKS}: {response['jobId']}")
 
+    # Dunnes IDs: scraper image (needs curl_cffi to bypass Cloudflare on sitemap)
+    ids_dunnes_response = batch.submit_job(
+        jobName="dunnes-ids",
+        jobQueue=JOB_QUEUE,
+        jobDefinition=SCRAPER_JOB_DEFINITION,
+        containerOverrides={"command": ["python", "dunnes_ids.py"]},
+    )
+    dunnes_ids_job_id = ids_dunnes_response["jobId"]
+    submitted.append({"stage": "ids", "retailer": "dunnes", "jobId": dunnes_ids_job_id})
+    logger.info(f"Submitted dunnes ids job: {dunnes_ids_job_id}")
+
+    # Dunnes scraper chunks: depend on dunnes-ids completing
+    for chunk_id in range(TOTAL_CHUNKS):
+        response = batch.submit_job(
+            jobName=f"dunnes-scraper-chunk{chunk_id}",
+            jobQueue=JOB_QUEUE,
+            jobDefinition=SCRAPER_JOB_DEFINITION,
+            dependsOn=[{"jobId": dunnes_ids_job_id, "type": "SEQUENTIAL"}],
+            containerOverrides={
+                "command": ["python", "dunnes_api.py"],
+                "environment": [
+                    {"name": "CHUNK_ID", "value": str(chunk_id)},
+                    {"name": "TOTAL_CHUNKS", "value": str(TOTAL_CHUNKS)},
+                ],
+            },
+        )
+        submitted.append({"stage": "scraper", "retailer": "dunnes", "chunkId": chunk_id, "jobId": response["jobId"]})
+        logger.info(f"Submitted dunnes chunk {chunk_id}/{TOTAL_CHUNKS}: {response['jobId']}")
+
     return {"statusCode": 200, "jobs": submitted}

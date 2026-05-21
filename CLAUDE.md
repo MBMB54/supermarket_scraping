@@ -47,7 +47,7 @@ CHUNK_ID=0 TOTAL_CHUNKS=200 uv run python tesco/tesco_api.py
 
 **Job queue**: `getting-started-fargate-job-queue`
 
-Tesco, aldi, and supervalu are all active in the Lambda orchestrator.
+Tesco, aldi, supervalu, and dunnes are all active in the Lambda orchestrator.
 
 ## Dockerfiles
 
