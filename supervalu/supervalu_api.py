@@ -55,7 +55,7 @@ def fetch_store_ids() -> list[int]:
     return [store["retailerStoreId"] for store in response.json()["items"]]
 
 
-STORES_PER_CHUNK = 30
+STORES_PER_CHUNK = 60
 
 _all_store_ids = fetch_store_ids()
 logger.info(f"Loaded {len(_all_store_ids)} supervalu store IDs")
