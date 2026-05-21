@@ -15,6 +15,7 @@ COPY tesco/tesco_ids.py ./
 COPY tesco/graphql_query.txt ./
 COPY supervalu/supervalu_api.py ./
 COPY aldi/aldi_api.py ./
+COPY dunnes/dunnes_ids.py ./
 COPY dunnes/dunnes_api.py ./
 
 CMD ["python", "tesco_api.py"]
