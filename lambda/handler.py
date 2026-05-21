@@ -65,4 +65,21 @@ def lambda_handler(event, context):
         submitted.append({"stage": "scraper", "retailer": "tesco", "chunkId": chunk_id, "jobId": response["jobId"]})
         logger.info(f"Submitted tesco chunk {chunk_id}/{TOTAL_CHUNKS}: {response['jobId']}")
 
+    # Supervalu scraper chunks: IDs are scraped separately, no dependency
+    for chunk_id in range(TOTAL_CHUNKS):
+        response = batch.submit_job(
+            jobName=f"supervalu-scraper-chunk{chunk_id}",
+            jobQueue=JOB_QUEUE,
+            jobDefinition=SCRAPER_JOB_DEFINITION,
+            containerOverrides={
+                "command": ["python", "supervalu_api.py"],
+                "environment": [
+                    {"name": "CHUNK_ID", "value": str(chunk_id)},
+                    {"name": "TOTAL_CHUNKS", "value": str(TOTAL_CHUNKS)},
+                ],
+            },
+        )
+        submitted.append({"stage": "scraper", "retailer": "supervalu", "chunkId": chunk_id, "jobId": response["jobId"]})
+        logger.info(f"Submitted supervalu chunk {chunk_id}/{TOTAL_CHUNKS}: {response['jobId']}")
+
     return {"statusCode": 200, "jobs": submitted}
