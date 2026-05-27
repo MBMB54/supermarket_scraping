@@ -61,4 +61,7 @@ if __name__ == "__main__":
         logger.info("IDs already scraped today — skipping")
     else:
         records = scrape_dunnes_product_ids()
-        write_to_parquet_and_upload(records)
+        if not records:
+            logger.error("0 IDs scraped — sitemap likely blocked. Leaving latest/ unchanged.")
+        else:
+            write_to_parquet_and_upload(records)

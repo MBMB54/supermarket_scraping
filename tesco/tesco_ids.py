@@ -125,6 +125,9 @@ def upload_ids(hrefs: list, folder_date: str, timestamp: str) -> str:
     ids = list(
         {re.search(r"/products/(\d{9})", h).group(1) for h in hrefs if re.search(r"/products/(\d{9})", h)}
     )
+    if not ids:
+        logger.error("0 IDs extracted from hrefs — skipping upload to avoid overwriting latest/")
+        return ""
     now = datetime.datetime.now(tz=datetime.UTC)
     s3_uri = f"s3://{BUCKET}/raw/{RETAILER}/ids/date={folder_date}/tesco_product_ids_{timestamp}.parquet"
 
