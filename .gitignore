@@ -17,3 +17,5 @@ photos/
 *.csv
 *.log
 .vscode
+.dbt
+dbt_ie_supermarket_analytics/models/example/
