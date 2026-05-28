@@ -18,4 +18,4 @@ photos/
 *.log
 .vscode
 .dbt
-dbt_ie_supermarket_analytics/models/example/
+dbt/models/example/

@@ -1,0 +1,34 @@
+version: 2
+
+models:
+  - name: stg_tesco
+    columns:
+      - name: tpnc
+        description: Unique product identifier for Tesco products
+        tests:
+          - unique
+          - not_null
+
+  - name: stg_aldi
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
+
+
+  - name: stg_dunnes
+    columns:
+      - name: id
+        description: Unique product identifier for Dunnes products
+        tests:
+          - unique
+          - not_null
+
+  - name: stg_supervalu
+    columns:
+      - name: id
+        description: Unique product identifier for Supervalu products
+        tests:
+          - unique
+          - not_null

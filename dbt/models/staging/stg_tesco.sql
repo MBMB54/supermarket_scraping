@@ -17,5 +17,5 @@ SELECT
     data.aisleName AS department_3,
     data.shelfName AS department_4,
     data.description AS item_description,
-    CURRENT_DATE AS scraped_at
+    CURRENT_DATE AS scraped_date
 FROM {{ source('external_source', 'tesco') }}

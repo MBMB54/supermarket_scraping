@@ -12,5 +12,6 @@ SELECT
     data.price.comparisonDisplay AS unit_price,
     data.categories[1].name AS department,
     data.categories[2].name AS sub_department,
-    data.description AS description
+    data.description AS description,
+    CURRENT_DATE AS scraped_date
 FROM {{ source('external_source', 'aldi') }}
