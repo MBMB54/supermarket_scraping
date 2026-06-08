@@ -5,6 +5,7 @@ import re
 import boto3
 import polars as pl
 from curl_cffi.requests import Session
+from tenacity import retry, retry_if_result, stop_after_attempt, wait_fixed
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("dunnes_ids")
@@ -13,11 +14,11 @@ BUCKET = "ie-supermarket-data"
 RETAILER = "dunnes"
 
 
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(10), retry=retry_if_result(lambda x: not x))
 def scrape_dunnes_product_ids() -> list[str]:
     with Session(impersonate="chrome120") as s:
         xml_text = s.get("https://www.dunnesstoresgrocery.com/sitemap.xml", timeout=30).text
-    results = re.findall(r"/product/[^<]+-id-(\d+)", xml_text)
-    return results
+    return re.findall(r"/product/[^<]+-id-(\d+)", xml_text)
 
 
 def write_to_parquet_and_upload(records: list[dict]) -> str:

@@ -13,6 +13,8 @@ notebooks/*.json
 .secrets
 *.jpg
 photos/
+__pycache__/
+*.pyc
 .DS_Store
 *.csv
 *.log

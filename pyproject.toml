@@ -9,6 +9,7 @@ dependencies = [
     "boto3>=1.0.0",
     "python-dotenv>=1.2.1",
     "polars>=1.37.1",
+    "tenacity>=8.0.0",
 ]
 
 [dependency-groups]
@@ -24,6 +25,7 @@ notebook = [
     "numpy>=2.3.5",
     "curl-cffi>=0.15.0",
     "playwright>=1.57.0",
+    "rapidfuzz>=3.14.3",
 ]
 scraper = [
     "aiohttp>=3.13.3",
@@ -37,6 +39,7 @@ ids = [
     # Dockerfile.ids: uv sync --group ids
     "polars[cloud]>=1.37.1",
     "requests>=2.32.3",
+    "curl-cffi>=0.15.0",
 ]
 ml = [
     "scikit-learn>=1.8.0",
