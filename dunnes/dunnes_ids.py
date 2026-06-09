@@ -5,7 +5,7 @@ import re
 import boto3
 import polars as pl
 from curl_cffi.requests import Session
-from tenacity import retry, retry_if_result, stop_after_attempt, wait_fixed
+from tenacity import retry, retry_if_result, stop_after_attempt, wait_exponential
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("dunnes_ids")
@@ -14,7 +14,17 @@ BUCKET = "ie-supermarket-data"
 RETAILER = "dunnes"
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_fixed(10), retry=retry_if_result(lambda x: not x))
+def _on_retry_exhausted(retry_state):
+    logger.error(f"0 IDs scraped after {retry_state.attempt_number} attempts — sitemap likely blocked. Leaving latest/ unchanged.")
+    return []
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=10, max=60),
+    retry=retry_if_result(lambda x: not x),
+    retry_error_callback=_on_retry_exhausted,
+)
 def scrape_dunnes_product_ids() -> list[str]:
     with Session(impersonate="chrome120") as s:
         xml_text = s.get("https://www.dunnesstoresgrocery.com/sitemap.xml", timeout=30).text
