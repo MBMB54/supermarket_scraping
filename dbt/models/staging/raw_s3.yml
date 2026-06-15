@@ -2,10 +2,11 @@ version: 2
 
 sources:
   - name: external_source
-    meta:
-      external_location: "s3://ie-supermarket-data/raw/{name}/{{ var('run_date', modules.datetime.date.today().isoformat()) }}/*.jsonl.gz"
     tables:
       - name: aldi
       - name: tesco
       - name: dunnes
       - name: supervalu
+    config:
+      meta:
+        external_location: "s3://ie-supermarket-data/raw/{name}/{{ var('run_date', modules.datetime.date.today().isoformat()) }}/*.jsonl.gz"
