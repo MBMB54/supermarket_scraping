@@ -5,25 +5,29 @@ import re
 import boto3
 import polars as pl
 import requests
+from tenacity import retry, retry_if_result, stop_after_attempt, wait_exponential
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("supervalu_api")
+logger = logging.getLogger("supervalu_ids")
 
 BUCKET = "ie-supermarket-data"
 RETAILER = "supervalu"
 
 
-def scrape_supervalu_product_ids() -> list[dict]:
+def _on_retry_exhausted(retry_state):
+    logger.error(f"0 IDs scraped after {retry_state.attempt_number} attempts — sitemap likely blocked. Leaving latest/ unchanged.")
+    return []
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=10, max=60),
+    retry=retry_if_result(lambda x: not x),
+    retry_error_callback=_on_retry_exhausted,
+)
+def scrape_supervalu_product_ids() -> list[str]:
     xml_text = requests.get("https://shop.supervalu.ie/sitemap.xml", timeout=30).text
-    results = re.findall(r"/product/[^<]+-id-(\d+)", xml_text)
-
-    # results = []
-    # for url in urls:
-    #     match = re.search(r"\d{18}", url)
-    #     if match:
-    #         results.append({"product_id": match.group(), "url": url})
-
-    return results
+    return re.findall(r"/product/[^<]+-id-(\d+)", xml_text)
 
 
 def write_to_parquet_and_upload(records: list[dict]) -> str:
@@ -55,16 +59,22 @@ def write_to_parquet_and_upload(records: list[dict]) -> str:
     return s3_uri
 
 
-def _already_ran_today() -> bool:
+REFRESH_DAYS = 7
+
+
+def _recently_scraped() -> bool:
     s3 = boto3.client("s3")
-    today = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%d")
-    resp = s3.list_objects_v2(Bucket=BUCKET, Prefix=f"raw/{RETAILER}/ids/date={today}/")
-    return resp.get("KeyCount", 0) > 0
+    try:
+        obj = s3.head_object(Bucket=BUCKET, Key=f"raw/{RETAILER}/ids/latest/{RETAILER}_product_ids.parquet")
+        age = datetime.datetime.now(tz=datetime.UTC) - obj["LastModified"]
+        return age.days < REFRESH_DAYS
+    except s3.exceptions.ClientError:
+        return False
 
 
 if __name__ == "__main__":
-    if _already_ran_today():
-        logger.info("IDs already scraped today — skipping")
+    if _recently_scraped():
+        logger.info(f"IDs scraped within last {REFRESH_DAYS} days — skipping")
     else:
         records = scrape_supervalu_product_ids()
         if not records:

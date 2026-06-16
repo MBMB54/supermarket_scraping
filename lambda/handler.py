@@ -15,100 +15,59 @@ SCRAPER_JOB_DEFINITION = os.environ.get(
 TOTAL_CHUNKS = int(os.environ.get("TOTAL_CHUNKS", "5"))
 
 
+def submit_ids_job(batch, retailer: str, script: str, job_definition: str) -> dict:
+    response = batch.submit_job(
+        jobName=f"{retailer}-ids",
+        jobQueue=JOB_QUEUE,
+        jobDefinition=job_definition,
+        containerOverrides={"command": ["python", script]},
+    )
+    job_id = response["jobId"]
+    logger.info(f"Submitted {retailer} ids job: {job_id}")
+    return {"stage": "ids", "retailer": retailer, "jobId": job_id}
+
+
+def submit_scraper_chunks(batch, retailer: str, api_script: str, ids_job_id: str | None = None) -> list[dict]:
+    kwargs = {}
+    if ids_job_id:
+        kwargs["dependsOn"] = [{"jobId": ids_job_id, "type": "SEQUENTIAL"}]
+
+    jobs = []
+    for chunk_id in range(TOTAL_CHUNKS):
+        response = batch.submit_job(
+            jobName=f"{retailer}-scraper-chunk{chunk_id}",
+            jobQueue=JOB_QUEUE,
+            jobDefinition=SCRAPER_JOB_DEFINITION,
+            containerOverrides={
+                "command": ["python", api_script],
+                "environment": [
+                    {"name": "CHUNK_ID", "value": str(chunk_id)},
+                    {"name": "TOTAL_CHUNKS", "value": str(TOTAL_CHUNKS)},
+                ],
+            },
+            **kwargs,
+        )
+        logger.info(f"Submitted {retailer} chunk {chunk_id}/{TOTAL_CHUNKS}: {response['jobId']}")
+        jobs.append({"stage": "scraper", "retailer": retailer, "chunkId": chunk_id, "jobId": response["jobId"]})
+    return jobs
+
+
 def lambda_handler(event, context):
     batch = boto3.client("batch", region_name=REGION)
     submitted = []
 
-    # Aldi IDs: lightweight image (requests + polars, no browser)
-    ids_aldi_response = batch.submit_job(
-        jobName="aldi-ids",
-        jobQueue=JOB_QUEUE,
-        jobDefinition=IDS_JOB_DEFINITION,
-        containerOverrides={"command": ["python", "aldi_ids.py"]},
-    )
-    aldi_ids_job_id = ids_aldi_response["jobId"]
-    submitted.append({"stage": "ids", "retailer": "aldi", "jobId": aldi_ids_job_id})
-    logger.info(f"Submitted aldi ids job: {aldi_ids_job_id}")
+    aldi_ids = submit_ids_job(batch, "aldi", "aldi_ids.py", IDS_JOB_DEFINITION)
+    submitted.append(aldi_ids)
+    submitted.extend(submit_scraper_chunks(batch, "aldi", "aldi_api.py", aldi_ids["jobId"]))
 
-    # Aldi scraper chunks: depend on aldi-ids completing
-    for chunk_id in range(TOTAL_CHUNKS):
-        response = batch.submit_job(
-            jobName=f"aldi-scraper-chunk{chunk_id}",
-            jobQueue=JOB_QUEUE,
-            jobDefinition=SCRAPER_JOB_DEFINITION,
-            dependsOn=[{"jobId": aldi_ids_job_id, "type": "SEQUENTIAL"}],
-            containerOverrides={
-                "command": ["python", "aldi_api.py"],
-                "environment": [
-                    {"name": "CHUNK_ID", "value": str(chunk_id)},
-                    {"name": "TOTAL_CHUNKS", "value": str(TOTAL_CHUNKS)},
-                ],
-            },
-        )
-        submitted.append({"stage": "scraper", "retailer": "aldi", "chunkId": chunk_id, "jobId": response["jobId"]})
-        logger.info(f"Submitted aldi chunk {chunk_id}/{TOTAL_CHUNKS}: {response['jobId']}")
+    submitted.extend(submit_scraper_chunks(batch, "tesco", "tesco_api.py"))
 
-    # Tesco scraper chunks: IDs are scraped separately, no dependency
-    for chunk_id in range(TOTAL_CHUNKS):
-        response = batch.submit_job(
-            jobName=f"tesco-scraper-chunk{chunk_id}",
-            jobQueue=JOB_QUEUE,
-            jobDefinition=SCRAPER_JOB_DEFINITION,
-            containerOverrides={
-                "command": ["python", "tesco_api.py"],
-                "environment": [
-                    {"name": "CHUNK_ID", "value": str(chunk_id)},
-                    {"name": "TOTAL_CHUNKS", "value": str(TOTAL_CHUNKS)},
-                ],
-            },
-        )
-        submitted.append({"stage": "scraper", "retailer": "tesco", "chunkId": chunk_id, "jobId": response["jobId"]})
-        logger.info(f"Submitted tesco chunk {chunk_id}/{TOTAL_CHUNKS}: {response['jobId']}")
+    supervalu_ids = submit_ids_job(batch, "supervalu", "supervalu_ids.py", SCRAPER_JOB_DEFINITION)
+    submitted.append(supervalu_ids)
+    submitted.extend(submit_scraper_chunks(batch, "supervalu", "supervalu_api.py", supervalu_ids["jobId"]))
 
-    # Supervalu scraper chunks: IDs are scraped separately, no dependency
-    for chunk_id in range(TOTAL_CHUNKS):
-        response = batch.submit_job(
-            jobName=f"supervalu-scraper-chunk{chunk_id}",
-            jobQueue=JOB_QUEUE,
-            jobDefinition=SCRAPER_JOB_DEFINITION,
-            containerOverrides={
-                "command": ["python", "supervalu_api.py"],
-                "environment": [
-                    {"name": "CHUNK_ID", "value": str(chunk_id)},
-                    {"name": "TOTAL_CHUNKS", "value": str(TOTAL_CHUNKS)},
-                ],
-            },
-        )
-        submitted.append({"stage": "scraper", "retailer": "supervalu", "chunkId": chunk_id, "jobId": response["jobId"]})
-        logger.info(f"Submitted supervalu chunk {chunk_id}/{TOTAL_CHUNKS}: {response['jobId']}")
-
-    # Dunnes IDs: scraper image (needs curl_cffi to bypass Cloudflare on sitemap)
-    ids_dunnes_response = batch.submit_job(
-        jobName="dunnes-ids",
-        jobQueue=JOB_QUEUE,
-        jobDefinition=SCRAPER_JOB_DEFINITION,
-        containerOverrides={"command": ["python", "dunnes_ids.py"]},
-    )
-    dunnes_ids_job_id = ids_dunnes_response["jobId"]
-    submitted.append({"stage": "ids", "retailer": "dunnes", "jobId": dunnes_ids_job_id})
-    logger.info(f"Submitted dunnes ids job: {dunnes_ids_job_id}")
-
-    # Dunnes scraper chunks: depend on dunnes-ids completing
-    for chunk_id in range(TOTAL_CHUNKS):
-        response = batch.submit_job(
-            jobName=f"dunnes-scraper-chunk{chunk_id}",
-            jobQueue=JOB_QUEUE,
-            jobDefinition=SCRAPER_JOB_DEFINITION,
-            dependsOn=[{"jobId": dunnes_ids_job_id, "type": "SEQUENTIAL"}],
-            containerOverrides={
-                "command": ["python", "dunnes_api.py"],
-                "environment": [
-                    {"name": "CHUNK_ID", "value": str(chunk_id)},
-                    {"name": "TOTAL_CHUNKS", "value": str(TOTAL_CHUNKS)},
-                ],
-            },
-        )
-        submitted.append({"stage": "scraper", "retailer": "dunnes", "chunkId": chunk_id, "jobId": response["jobId"]})
-        logger.info(f"Submitted dunnes chunk {chunk_id}/{TOTAL_CHUNKS}: {response['jobId']}")
+    dunnes_ids = submit_ids_job(batch, "dunnes", "dunnes_ids.py", SCRAPER_JOB_DEFINITION)
+    submitted.append(dunnes_ids)
+    submitted.extend(submit_scraper_chunks(batch, "dunnes", "dunnes_api.py", dunnes_ids["jobId"]))
 
     return {"statusCode": 200, "jobs": submitted}

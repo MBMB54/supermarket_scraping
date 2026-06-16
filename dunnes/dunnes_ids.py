@@ -26,7 +26,7 @@ def _on_retry_exhausted(retry_state):
     retry_error_callback=_on_retry_exhausted,
 )
 def scrape_dunnes_product_ids() -> list[str]:
-    with Session(impersonate="chrome120") as s:
+    with Session(impersonate="chrome136") as s:
         xml_text = s.get("https://www.dunnesstoresgrocery.com/sitemap.xml", timeout=30).text
     return re.findall(r"/product/[^<]+-id-(\d+)", xml_text)
 
@@ -60,16 +60,22 @@ def write_to_parquet_and_upload(records: list[dict]) -> str:
     return s3_uri
 
 
-def _already_ran_today() -> bool:
+REFRESH_DAYS = 7
+
+
+def _recently_scraped() -> bool:
     s3 = boto3.client("s3")
-    today = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%d")
-    resp = s3.list_objects_v2(Bucket=BUCKET, Prefix=f"raw/{RETAILER}/ids/date={today}/")
-    return resp.get("KeyCount", 0) > 0
+    try:
+        obj = s3.head_object(Bucket=BUCKET, Key=f"raw/{RETAILER}/ids/latest/{RETAILER}_product_ids.parquet")
+        age = datetime.datetime.now(tz=datetime.UTC) - obj["LastModified"]
+        return age.days < REFRESH_DAYS
+    except s3.exceptions.ClientError:
+        return False
 
 
 if __name__ == "__main__":
-    if _already_ran_today():
-        logger.info("IDs already scraped today — skipping")
+    if _recently_scraped():
+        logger.info(f"IDs scraped within last {REFRESH_DAYS} days — skipping")
     else:
         records = scrape_dunnes_product_ids()
         if not records:
