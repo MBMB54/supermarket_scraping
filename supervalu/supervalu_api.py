@@ -22,8 +22,9 @@ BUCKET = "ie-supermarket-data"
 CONCURRENT_REQUESTS = 5
 DELAY_BETWEEN_BATCHES = 2
 USER_AGENT_STRINGS = [
-    "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
 ]
 
 SUPERVALU_IDS = (
@@ -73,6 +74,9 @@ def get_headers():
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-site",
+        "x-site-host": "https://shop.supervalu.ie",
+        "x-site-location": "HeadersBuilderInterceptor",
+        "x-shopping-mode": "11111111-1111-1111-1111-111111111111",
     }
 
 
