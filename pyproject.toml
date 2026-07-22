@@ -2,7 +2,7 @@
 name = "supermarket-scraping"
 version = "0.1.0"
 description = "Supermarket web scraping project"
-requires-python = ">=3.11"
+requires-python = "==3.14.*"
 dependencies = [
     # Shared across all production scripts
     "requests>=2.32.3",
@@ -36,16 +36,13 @@ scraper = [
     "curl-cffi>=0.15.0",
 ]
 ids = [
-    # Dockerfile.ids: uv sync --group ids
-    "polars[cloud]>=1.37.1",
-    "requests>=2.32.3",
     "curl-cffi>=0.15.0",
 ]
 ml = [
     "scikit-learn>=1.8.0",
     "spacy>=3.8.11",
     "transformers>=5.0.0",
-    "sentence-transformers>=5.2.2",
+    "sentence-transformers[image]>=5.2.2",
     "rerankers>=0.10.0",
     "gliner2>=1.2.4",
     "python-levenshtein>=0.27.3",
@@ -54,6 +51,7 @@ ml = [
     "mlx-lm>=0.30.7",        # local Apple Silicon only
     "skrub>=0.9.0",
     "huggingface-hub>=1.19.0",
+    "datasets>=5.0.0",
 ]
 dbt = [
     "dbt-core>=1.11.11",

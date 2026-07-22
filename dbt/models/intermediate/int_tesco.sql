@@ -3,6 +3,7 @@
 WITH cleaned AS (
 SELECT
     id,
+    supermarket,
     regexp_replace(
     regexp_replace(
         regexp_replace(
@@ -82,6 +83,7 @@ FROM cleaned
 
 SELECT
     id,
+    supermarket,
     title,
     brand,
     category_1,

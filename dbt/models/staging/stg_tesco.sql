@@ -6,6 +6,7 @@ WITH source AS (
 
 SELECT
     tpnc AS id,
+    'tesco' AS supermarket,
     data.title AS title,
     data.brandName AS brand,
     CAST(data.details.packSize[1].value AS FLOAT) AS quantity,

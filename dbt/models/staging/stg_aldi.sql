@@ -6,12 +6,13 @@ WITH source AS (
 
 SELECT
     data.sku as id,
+    'aldi' AS supermarket,
     data.name AS title,
     data.brandName AS brand,
     data.sellingSize AS selling_size,
     data.price.amountRelevantDisplay AS price_display,
     data.price.wasPriceDisplay AS was_price_display,
-    data.price.comparisonDisplay AS price_comparsion_display,
+    data.price.comparisonDisplay AS price_comparison_display,
     data.OnSaleDateDisplay AS sale_date_display,
     data.OnSaleDate AS sale_date,
     data.categories[1].name AS category_1,

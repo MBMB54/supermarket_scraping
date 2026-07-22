@@ -3,10 +3,10 @@
 WITH stg AS (
     SELECT *,
     TRY_CAST(
-            REGEXP_EXTRACT(COALESCE(selling_size, price_comparsion_display,title), '(\d+\.?\d*)') AS DOUBLE
+            REGEXP_EXTRACT(COALESCE(selling_size, price_comparison_display,title), '(\d+\.?\d*)') AS DOUBLE
         ) AS unit_qty,
     LOWER(
-            REGEXP_EXTRACT(COALESCE(selling_size, price_comparsion_display,title), '(\d+\.?\d*)\s*([a-zA-Z]+)', 2)
+            REGEXP_EXTRACT(COALESCE(selling_size, price_comparison_display,title), '(\d+\.?\d*)\s*([a-zA-Z]+)', 2)
         ) AS unit_raw
     FROM {{ ref('stg_aldi') }}
 ),
@@ -14,6 +14,7 @@ WITH stg AS (
 extracted AS (
 SELECT
     id,
+    supermarket,
     regexp_replace(
     regexp_replace(
         regexp_replace(
@@ -38,7 +39,7 @@ SELECT
     COALESCE(regexp_replace(was_price_display, '[^\d.]', '', 'g')) AS was_price,
     regexp_replace(price_display, '[^\d.]', '', 'g')::FLOAT AS current_price,
     selling_size,
-    price_comparsion_displays,
+    price_comparison_display,
     unit_raw,
     unit_qty,
     CASE 
@@ -62,7 +63,7 @@ SELECT
         END AS unit_normalised,
     CASE
     WHEN selling_size IS NOT NULL THEN 'selling_size'
-    WHEN price_comparsion_display IS NOT NULL THEN 'price_comparison display'
+    WHEN price_comparison_display IS NOT NULL THEN 'price_comparison display'
     WHEN REGEXP_EXTRACT(title, '\d+\.?\d*\s*[a-zA-Z]+') IS NOT NULL THEN 'title'
     ELSE 'each' END AS size_source
 FROM stg

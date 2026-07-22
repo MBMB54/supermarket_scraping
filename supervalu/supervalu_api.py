@@ -5,12 +5,12 @@ import json
 import logging
 import os
 import random
+import uuid
 
 import aiohttp
 import boto3
 import polars as pl
 import requests
-import uuid
 from botocore.exceptions import ClientError
 
 logging.basicConfig(level=logging.INFO)
@@ -51,7 +51,9 @@ def fetch_store_ids() -> list[int]:
         "x-customer-session-id": f"https://shop.supervalu.ie|{uuid.uuid4()}",
         "Referer": "https://shop.supervalu.ie/",
     }
-    response = requests.get("https://storefrontgateway.supervalu.ie/api/stores", headers=headers, timeout=30)
+    response = requests.get(
+        "https://storefrontgateway.supervalu.ie/api/stores", headers=headers, timeout=30
+    )
     response.raise_for_status()
     return [store["retailerStoreId"] for store in response.json()["items"]]
 
@@ -157,7 +159,9 @@ async def fetch_all_products(
             batch = tasks[i : i + batch_size]
             batch_results = await asyncio.gather(*batch)
 
-            batch_filename = f"supervalu_raw_{timestamp}_chunk{chunk_id}_batch{batch_num:04d}.jsonl.gz"
+            batch_filename = (
+                f"supervalu_raw_{timestamp}_chunk{chunk_id}_batch{batch_num:04d}.jsonl.gz"
+            )
             tmp_path = f"/tmp/{batch_filename}"
             with gzip.open(tmp_path, "wt", encoding="utf-8") as f:
                 for result in batch_results:

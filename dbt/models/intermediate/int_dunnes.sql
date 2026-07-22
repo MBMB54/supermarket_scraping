@@ -64,14 +64,18 @@ SELECT
             ELSE 'each'
         END AS unit_normalised,
     ingredients,
-    allergy_advice,
-    dietary_flags,
+    is_vegan,
+    is_vegetarian,
+    is_gluten_free,
+    is_organic,
+    is_low_fat,
+    other_dietary,
     image_url,
     is_product_available,
     is_own_brand,
     item_description,
     scraped_date
-FROM {{ ref('stg_supervalu') }}
+FROM {{ ref('stg_dunnes') }}
 )
 
 SELECT
@@ -102,21 +106,11 @@ SELECT
     discount_start_date,
     discount_end_date,
     ingredients,
-    list_filter(
-        json_keys(allergy_advice),
-        k -> json_extract_string(allergy_advice, '$.' || k) = 'Contains'
-    ) AS contains_allergens,
-    list_filter(
-        json_keys(allergy_advice),
-        k -> json_extract_string(allergy_advice, '$.' || k) LIKE '%May Contain%'
-    ) AS may_contain_allergens,
-    dietary_flags,
-    list_contains(dietary_flags, 'Suitable for Vegans')      AS is_vegan,
-    list_contains(dietary_flags, 'Suitable for Vegetarians') AS is_vegetarian,
-    list_contains(dietary_flags, 'Gluten free')              AS is_gluten_free,
-    list_contains(dietary_flags, 'Organic')                  AS is_organic,
-    list_contains(dietary_flags, 'Kosher')                   AS is_kosher,
-    list_contains(dietary_flags, 'Halal')                    AS is_halal,
+    is_vegan,
+    is_vegetarian,
+    is_gluten_free,
+    is_organic,
+    is_low_fat,
     image_url,
     is_product_available,
     scraped_date
