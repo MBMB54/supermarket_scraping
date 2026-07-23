@@ -69,7 +69,7 @@ test = [
 line-length = 100
 
 # Target Python version
-target-version = "py311"
+target-version = "py314"
 
 # Enable these rule sets
 lint.select = [
