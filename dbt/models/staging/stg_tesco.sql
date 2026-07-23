@@ -29,7 +29,7 @@ SELECT
     data.description AS item_description,
     data.details.ingredients AS ingredients,
     data.foodIcons AS dietary_flags,
-    data.defaultImageUrl AS image_url,
+    data.media.defaultImage.url AS image_url,
     CASE WHEN data.title IS NULL AND data.promotions[1].metaData.seo.afterDiscountPrice IS NOT NULL THEN
         FALSE ELSE TRUE END AS is_product_available,
     -- price_cut = straight per-unit discount (incl. clearance); multibuy = 3-for-2 / 2-for-€5 / bogof / meal deals

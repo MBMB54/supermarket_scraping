@@ -30,7 +30,7 @@ clean-targets:         # directories to be removed by `dbt clean`
 # files using the `{{ config(...) }}` macro.
 models:
   dbt_ie_supermarket_analytics:
-    #+static_analysis: strict
+    +static_analysis: strict
     # Config indicated by + and applies to all files under models/example/
     example:
       +materialized: view
