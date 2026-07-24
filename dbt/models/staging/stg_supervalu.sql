@@ -32,6 +32,9 @@ SELECT
     data.ingredients AS ingredients,
     data.attributes._allergy_advice AS allergy_advice,
     data.attributes.lifestyle AS dietary_flags,
+    data.attributes.vegan AS is_vegan,
+    data.attributes.vegetarian AS is_vegetarian,
+    data.attributes['gluten free'] AS is_gluten_free,
     data.primaryImage.zoom AS image_url,
     data.available AS is_product_available,
     -- is_discount: wasPrice populated whenever a per-unit price cut applies (TPR or ProductPromotion)
