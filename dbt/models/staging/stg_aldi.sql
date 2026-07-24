@@ -20,7 +20,10 @@ SELECT
     NULL AS category_3,
     NULL AS category_4,
     data.description AS description,
-    CASE WHEN data.notForSaleReason == 'This product is currently not available.' THEN 
+    data.ingredients AS ingredients,
+    data.nutritionalClaims AS nutritional_claims,
+    data.assets[1].url AS image_url_raw,
+    CASE WHEN data.notForSaleReason == 'This product is currently not available.' THEN
         FALSE ELSE TRUE END AS is_product_available,
     CASE WHEN data.price.wasPriceDisplay IS NOT NULL THEN TRUE ELSE FALSE END AS is_sale,
     CURRENT_DATE AS scraped_date
