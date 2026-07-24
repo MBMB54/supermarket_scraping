@@ -2,6 +2,55 @@
 
 WITH source AS (
     SELECT * FROM {{ source('external_source', 'dunnes') }}
+),
+
+-- Dunnes runs on the same storefrontgateway backend as SuperValu, but unlike SuperValu its
+-- data.attributes struct has no _allergy_advice key at all (confirmed empty across a full day's
+-- scrapes). Allergen info is instead embedded in the description HTML under an "Allergy
+-- Advice" section, e.g. "Milk - Contains<br/>Wheat - May Contain<br/>", same as how ingredients
+-- is already extracted from HTML below since data.ingredients is always null for Dunnes.
+with_allergy_section AS (
+    SELECT
+        *,
+        array_to_string(
+            regexp_extract_all(data.description, '<b>Allergy Advice</b><br/>(.*?)(?:<br/><br/>|$)', 1),
+            '|'
+        ) AS allergy_advice_section
+    FROM source
+),
+
+-- Unnest to one row per (product, allergen) pair, then keep the highest-severity status per
+-- allergen (Contains > May Contain > Free From) before rebuilding the map: map_from_entries
+-- hard-errors on duplicate keys, and a product's Allergy Advice text can otherwise repeat the
+-- same allergen (e.g. once under "For allergens, see ingredients in bold" plus once under the
+-- structured list, or listing it twice with different statuses).
+allergy_pairs AS (
+    SELECT
+        product_id,
+        unnest(regexp_extract_all(allergy_advice_section, '([A-Za-z][A-Za-z ]*?) - (Contains|May Contain|Free From)', 1)) AS allergen_name,
+        unnest(regexp_extract_all(allergy_advice_section, '([A-Za-z][A-Za-z ]*?) - (Contains|May Contain|Free From)', 2)) AS allergen_status
+    FROM with_allergy_section
+    WHERE allergy_advice_section != ''
+),
+
+allergy_dedup AS (
+    SELECT DISTINCT ON (product_id, allergen_name)
+        product_id,
+        allergen_name,
+        allergen_status
+    FROM allergy_pairs
+    ORDER BY
+        product_id,
+        allergen_name,
+        CASE allergen_status WHEN 'Contains' THEN 1 WHEN 'May Contain' THEN 2 ELSE 3 END
+),
+
+allergy_json AS (
+    SELECT
+        product_id,
+        to_json(map_from_entries(list_zip(list(allergen_name), list(allergen_status)))) AS allergy_advice
+    FROM allergy_dedup
+    GROUP BY product_id
 )
 
 SELECT
@@ -66,6 +115,7 @@ SELECT
     data.attributes.organic AS is_organic,
     data.attributes.lowfat AS is_low_fat,
     data.attributes.other AS other_dietary,
+    allergy_json.allergy_advice AS allergy_advice,
     data.primaryImage.zoom AS image_url,
     data.available AS is_product_available,
     -- is_discount: wasPrice populated whenever a per-unit price cut applies (TPR or ProductPromotion)
@@ -78,5 +128,6 @@ SELECT
     END AS is_promotion,
     data.attributes.OwnBrand AS is_own_brand,
     CURRENT_DATE AS scraped_date
-FROM source
+FROM with_allergy_section
+LEFT JOIN allergy_json USING (product_id)
 WHERE data.name IS NOT NULL
