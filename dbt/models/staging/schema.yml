@@ -3,8 +3,8 @@ version: 2
 models:
   - name: stg_tesco
     columns:
-      - name: tpnc
-        description: Unique product identifier for Tesco products
+      - name: id
+        description: Unique product identifier for Tesco products (raw tpnc)
         tests:
           - unique
           - not_null

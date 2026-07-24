@@ -1,0 +1,42 @@
+version: 2
+
+models:
+  - name: int_tesco
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
+      - name: supermarket
+        tests:
+          - not_null
+
+  - name: int_aldi
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
+      - name: supermarket
+        tests:
+          - not_null
+
+  - name: int_dunnes
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
+      - name: supermarket
+        tests:
+          - not_null
+
+  - name: int_supervalu
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
+      - name: supermarket
+        tests:
+          - not_null

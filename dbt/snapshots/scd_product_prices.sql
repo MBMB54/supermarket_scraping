@@ -4,57 +4,65 @@
     target_schema='main',
     unique_key="id::varchar",
     strategy='check',
-    check_cols=['price', 'quantity','promotion_price', 'unit_price'],
+    check_cols=['price', 'was_price', 'unit_price'],
 ) }}
 
 SELECT
-    'tesco'     AS retailer,
+    supermarket AS retailer,
     id,
     title,
     brand,
     price,
+    was_price,
     unit_price,
-    promotion_price,
+    is_discount,
+    is_promotion,
     scraped_date
-FROM {{ ref('stg_tesco') }}
+FROM {{ ref('int_tesco') }}
 
 UNION ALL
 
 SELECT
-    'aldi'      AS retailer,
+    supermarket AS retailer,
     id,
     title,
     brand,
     price,
+    was_price,
     unit_price,
-    NULL::double AS promotion_price,
+    is_discount,
+    is_promotion,
     scraped_date
-FROM {{ ref('stg_aldi') }}
+FROM {{ ref('int_aldi') }}
 
 UNION ALL
 
 SELECT
-    'dunnes'    AS retailer,
+    supermarket AS retailer,
     id,
     title,
     brand,
     price,
+    was_price,
     unit_price,
-    promotion_price,
+    is_discount,
+    is_promotion,
     scraped_date
-FROM {{ ref('stg_dunnes') }}
+FROM {{ ref('int_dunnes') }}
 
 UNION ALL
 
 SELECT
-    'supervalu' AS retailer,
+    supermarket AS retailer,
     id,
     title,
     brand,
     price,
+    was_price,
     unit_price,
-    promotion_price,
+    is_discount,
+    is_promotion,
     scraped_date
-FROM {{ ref('stg_supervalu') }}
+FROM {{ ref('int_supervalu') }}
 
 {% endsnapshot %}
