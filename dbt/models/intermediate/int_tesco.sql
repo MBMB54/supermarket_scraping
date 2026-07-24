@@ -4,24 +4,9 @@ WITH cleaned AS (
 SELECT
     id,
     supermarket,
-    regexp_replace(
-    regexp_replace(
-        regexp_replace(
-            regexp_replace(
-                strip_accents(lower(title)),
-            '%', ' percent', 'g'),
-        '&', 'and', 'g'),
-    '-', ' ', 'g'),
-    '[^a-z0-9\s]', '', 'g') AS title,
-    regexp_replace(
-    regexp_replace(
-        regexp_replace(
-            regexp_replace(
-                strip_accents(lower(brand)),
-            '%', ' percent', 'g'),
-        '&', 'and', 'g'),
-    '-', ' ', 'g'),
-    '[^a-z0-9\s]', '', 'g') AS brand,
+    {{ normalize_text('title') }} AS title,
+    {{ normalize_text('brand') }} AS brand,
+    item_description,
     category_1,
     category_2,
     category_3,
@@ -61,10 +46,14 @@ SELECT
             WHEN 'm'  THEN 'm'
             ELSE 'each'
         END AS unit_normalised,
-    -- keep the raw HTML so allergens can be parsed from <strong> tags below
+    -- keep the raw HTML for ingredients text (still stripped of tags in the final select)
     ingredients AS ingredients_raw,
+    -- structured allergen data: list of {name, values} structs, e.g. {"name": "Contains", "values": ["Milk"]}
+    allergen_info,
     dietary_flags,
-    image_url
+    image_url,
+    is_product_available,
+    scraped_date
 FROM {{ ref('stg_tesco') }}
 ),
 
@@ -82,47 +71,65 @@ FROM cleaned
 )
 
 SELECT
-    id,
-    supermarket,
-    title,
-    brand,
-    category_1,
-    category_2,
-    category_3,
-    category_4,
-    is_discount,
-    is_promotion,
-    price,
-    was_price,
-    promotion_start_date,
-    promotion_end_date,
-    promotion_description,
-    promotion_type,
-    promotion_qualities,
-    unit_price,
-    selling_size,
-    unit,
-    unit_qty_normalised,
-    unit_normalised,
-    -- cleaned ingredients: HTML stripped + trimmed per element, empties removed
-    list_filter(
-        list_transform(ingredients_raw, x -> trim(regexp_replace(x, '<[^>]+>', '', 'g'))),
-        x -> length(x) > 0
-    ) AS ingredients,
-    -- derived allergens: Tesco bolds allergens with <strong> tags inside ingredients
-    list_distinct(
+    id::VARCHAR AS id,
+    supermarket::VARCHAR AS supermarket,
+    title::VARCHAR AS title,
+    {{ clean_title('title') }} AS title_cleaned,
+    brand::VARCHAR AS brand,
+    CAST(NULL AS BOOLEAN) AS is_own_brand,
+    item_description::VARCHAR AS item_description,
+    category_1::VARCHAR AS category_1,
+    category_2::VARCHAR AS category_2,
+    category_3::VARCHAR AS category_3,
+    category_4::VARCHAR AS category_4,
+    is_discount::BOOLEAN AS is_discount,
+    is_promotion::BOOLEAN AS is_promotion,
+    price::DOUBLE AS price,
+    was_price::DOUBLE AS was_price,
+    selling_size::DOUBLE AS selling_size,
+    unit::VARCHAR AS unit,
+    unit_qty_normalised::DOUBLE AS unit_qty_normalised,
+    unit_normalised::VARCHAR AS unit_normalised,
+    unit_price::DOUBLE AS unit_price,
+    ROUND(price / NULLIF(unit_qty_normalised, 0), 2)::DOUBLE AS price_per_unit_normalised,
+    promotion_description::VARCHAR AS promotion_description,
+    promotion_type::VARCHAR AS promotion_type,
+    promotion_qualities::VARCHAR[] AS promotion_qualities,
+    promotion_start_date::DATE AS promotion_start_date,
+    promotion_end_date::DATE AS promotion_end_date,
+    CAST(NULL AS DATE) AS discount_start_date,
+    CAST(NULL AS DATE) AS discount_end_date,
+    -- cleaned ingredients: HTML stripped + trimmed per element, empties removed, joined into one string
+    array_to_string(
+        list_filter(
+            list_transform(ingredients_raw, x -> trim(regexp_replace(x, '<[^>]+>', '', 'g'))),
+            x -> length(x) > 0
+        ),
+        ', '
+    )::VARCHAR AS ingredients,
+    -- structured allergen data: flatten values from entries named 'Contains'
+    flatten(
         list_transform(
-            regexp_extract_all(array_to_string(ingredients_raw, ' '), '<strong>([^<]+)</strong>', 1),
-            x -> trim(lower(x))
+            list_filter(allergen_info, x -> x.name = 'Contains'),
+            x -> x.values
         )
-    ) AS allergens,
-    dietary_flags,
+    )::VARCHAR[] AS contains_allergens,
+    -- structured allergen data: flatten values from entries named 'May Contain'
+    flatten(
+        list_transform(
+            list_filter(allergen_info, x -> x.name ILIKE '%may contain%'),
+            x -> x.values
+        )
+    )::VARCHAR[] AS may_contain_allergens,
+    dietary_flags::VARCHAR[] AS dietary_flags,
     list_contains(dietary_flags, 'Suitable for Vegans')      AS is_vegan,
     list_contains(dietary_flags, 'Suitable for Vegetarians') AS is_vegetarian,
     list_contains(dietary_flags, 'Gluten free')              AS is_gluten_free,
     list_contains(dietary_flags, 'Organic')                  AS is_organic,
+    list_contains(dietary_flags, 'Low Fat')                  AS is_low_fat,
     list_contains(dietary_flags, 'Kosher')                   AS is_kosher,
     list_contains(dietary_flags, 'Halal')                    AS is_halal,
-    image_url,
-    ROUND(price / NULLIF(unit_qty_normalised, 0), 2) AS price_per_unit_normalised
+    image_url::VARCHAR AS image_url,
+    is_product_available::BOOLEAN AS is_product_available,
+    scraped_date::DATE AS scraped_date
 FROM priced

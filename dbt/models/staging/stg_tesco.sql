@@ -28,6 +28,7 @@ SELECT
     data.shelfName AS category_4,
     data.description AS item_description,
     data.details.ingredients AS ingredients,
+    data.details.allergenInfo AS allergen_info,
     data.foodIcons AS dietary_flags,
     data.media.defaultImage.url AS image_url,
     CASE WHEN data.title IS NULL AND data.promotions[1].metaData.seo.afterDiscountPrice IS NOT NULL THEN
