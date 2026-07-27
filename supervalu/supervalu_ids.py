@@ -26,17 +26,23 @@ HEADERS = {
 
 PRODUCT_ID_RE = re.compile(r'/product/[^"]+?-id-(\d+)')
 NEXT_PAGE_RE = re.compile(r'<link rel="next" href="([^"]+)"')
+SITEMAP_PRODUCT_ID_RE = re.compile(r"/product/[^<]+-id-(\d+)")
 
 
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=10, max=60),
     retry=retry_if_result(lambda x: not x),
-    retry_error_callback=lambda s: [],
+    retry_error_callback=lambda s: "",
 )
-def get_category_paths() -> list[str]:
-    xml_text = requests.get("https://shop.supervalu.ie/sitemap.xml", timeout=30).text
-    all_category_urls = re.findall(r"<loc>(https://shop\.supervalu\.ie/categories/[^<]+)</loc>", xml_text)
+def fetch_sitemap() -> str:
+    return requests.get("https://shop.supervalu.ie/sitemap.xml", timeout=30).text
+
+
+def get_category_paths(xml_text: str) -> list[str]:
+    all_category_urls = re.findall(
+        r"<loc>(https://shop\.supervalu\.ie/categories/[^<]+)</loc>", xml_text
+    )
     depth2 = [
         u.replace("https://shop.supervalu.ie/categories/", "")
         for u in all_category_urls
@@ -44,6 +50,12 @@ def get_category_paths() -> list[str]:
     ]
     logger.info(f"Found {len(depth2)} subcategories in sitemap")
     return depth2
+
+
+def get_sitemap_product_ids(xml_text: str) -> list[str]:
+    ids = SITEMAP_PRODUCT_ID_RE.findall(xml_text)
+    logger.info(f"Found {len(ids)} product IDs listed directly in sitemap")
+    return ids
 
 
 async def fetch_category_ids(session: aiohttp.ClientSession, category_path: str) -> list[str]:
@@ -87,9 +99,7 @@ async def scrape_all_categories(category_paths: list[str]) -> list[str]:
             return await fetch_category_ids(session, path)
 
     async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
-        results = await asyncio.gather(
-            *[bounded_fetch(session, path) for path in category_paths]
-        )
+        results = await asyncio.gather(*[bounded_fetch(session, path) for path in category_paths])
     all_ids = list({id_ for ids in results for id_ in ids})
     logger.info(f"Found {len(all_ids)} unique product IDs across {len(category_paths)} categories")
     return all_ids
@@ -120,7 +130,9 @@ def write_to_parquet_and_upload(records: list[str]) -> str:
 def _recently_scraped() -> bool:
     s3 = boto3.client("s3")
     try:
-        obj = s3.head_object(Bucket=BUCKET, Key=f"raw/{RETAILER}/ids/latest/{RETAILER}_product_ids.parquet")
+        obj = s3.head_object(
+            Bucket=BUCKET, Key=f"raw/{RETAILER}/ids/latest/{RETAILER}_product_ids.parquet"
+        )
         age = datetime.datetime.now(tz=datetime.UTC) - obj["LastModified"]
         return age.days < REFRESH_DAYS
     except s3.exceptions.ClientError:
@@ -132,11 +144,22 @@ if __name__ == "__main__":
     if not force and _recently_scraped():
         logger.info(f"IDs scraped within last {REFRESH_DAYS} days — skipping")
     else:
-        category_paths = get_category_paths()
-        if not category_paths:
-            logger.error("No categories found — sitemap likely blocked. Leaving latest/ unchanged.")
+        xml_text = fetch_sitemap()
+        if not xml_text:
+            logger.error(
+                "Sitemap fetch failed — sitemap likely blocked. Leaving latest/ unchanged."
+            )
         else:
-            records = asyncio.run(scrape_all_categories(category_paths))
+            category_paths = get_category_paths(xml_text)
+            sitemap_ids = get_sitemap_product_ids(xml_text)
+            category_ids = (
+                asyncio.run(scrape_all_categories(category_paths)) if category_paths else []
+            )
+            records = list(set(category_ids) | set(sitemap_ids))
+            logger.info(
+                f"Combined {len(category_ids)} category-crawl IDs with "
+                f"{len(sitemap_ids)} sitemap IDs into {len(records)} unique IDs"
+            )
             if not records:
                 logger.error("0 IDs scraped. Leaving latest/ unchanged.")
             else:
