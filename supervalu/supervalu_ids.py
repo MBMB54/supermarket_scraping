@@ -17,6 +17,12 @@ BUCKET = "ie-supermarket-data"
 RETAILER = "supervalu"
 REFRESH_DAYS = 7
 STORE_ID = 364
+# Assortment is store-specific — a single store's category pages miss products
+# excluded from its local listing (e.g. regulated OTC meds) or with narrow regional
+# distribution (e.g. fresh/local items). 5550 is SuperValu's only "Corporate"-type
+# store ("SuperValu Online") and carries a visibly broader catalogue than any single
+# branch; the rest are regular branches picked for geographic spread.
+EXTRA_STORE_IDS = [5550, 1708, 260, 1261, 276]
 CONCURRENT_REQUESTS = 5
 
 HEADERS = {
@@ -58,9 +64,11 @@ def get_sitemap_product_ids(xml_text: str) -> list[str]:
     return ids
 
 
-async def fetch_category_ids(session: aiohttp.ClientSession, category_path: str) -> list[str]:
+async def fetch_category_ids(
+    session: aiohttp.ClientSession, category_path: str, store_id: int
+) -> list[str]:
     ids = []
-    url = f"https://shop.supervalu.ie/sm/delivery/rsid/{STORE_ID}/categories/{category_path}"
+    url = f"https://shop.supervalu.ie/sm/delivery/rsid/{store_id}/categories/{category_path}"
 
     while url:
         try:
@@ -77,7 +85,7 @@ async def fetch_category_ids(session: aiohttp.ClientSession, category_path: str)
             url = (
                 next_match.group(1).replace(
                     "https://shop.supervalu.ie/categories/",
-                    f"https://shop.supervalu.ie/sm/delivery/rsid/{STORE_ID}/categories/",
+                    f"https://shop.supervalu.ie/sm/delivery/rsid/{store_id}/categories/",
                 )
                 if next_match and page_ids
                 else None
@@ -89,19 +97,22 @@ async def fetch_category_ids(session: aiohttp.ClientSession, category_path: str)
     return ids
 
 
-async def scrape_all_categories(category_paths: list[str]) -> list[str]:
+async def scrape_all_categories(category_paths: list[str], store_id: int) -> list[str]:
     semaphore = asyncio.Semaphore(CONCURRENT_REQUESTS)
     connector = aiohttp.TCPConnector(limit=CONCURRENT_REQUESTS, ttl_dns_cache=300)
     timeout = aiohttp.ClientTimeout(connect=10, sock_read=60)
 
     async def bounded_fetch(session: aiohttp.ClientSession, path: str) -> list[str]:
         async with semaphore:
-            return await fetch_category_ids(session, path)
+            return await fetch_category_ids(session, path, store_id)
 
     async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
         results = await asyncio.gather(*[bounded_fetch(session, path) for path in category_paths])
     all_ids = list({id_ for ids in results for id_ in ids})
-    logger.info(f"Found {len(all_ids)} unique product IDs across {len(category_paths)} categories")
+    logger.info(
+        f"Store {store_id}: found {len(all_ids)} unique product IDs across "
+        f"{len(category_paths)} categories"
+    )
     return all_ids
 
 
@@ -152,13 +163,16 @@ if __name__ == "__main__":
         else:
             category_paths = get_category_paths(xml_text)
             sitemap_ids = get_sitemap_product_ids(xml_text)
-            category_ids = (
-                asyncio.run(scrape_all_categories(category_paths)) if category_paths else []
-            )
-            records = list(set(category_ids) | set(sitemap_ids))
+            category_ids: set[str] = set()
+            if category_paths:
+                for store_id in [STORE_ID, *EXTRA_STORE_IDS]:
+                    store_ids = asyncio.run(scrape_all_categories(category_paths, store_id))
+                    category_ids |= set(store_ids)
+            records = list(category_ids | set(sitemap_ids))
             logger.info(
-                f"Combined {len(category_ids)} category-crawl IDs with "
-                f"{len(sitemap_ids)} sitemap IDs into {len(records)} unique IDs"
+                f"Combined {len(category_ids)} category-crawl IDs across "
+                f"{1 + len(EXTRA_STORE_IDS)} stores with {len(sitemap_ids)} sitemap IDs "
+                f"into {len(records)} unique IDs"
             )
             if not records:
                 logger.error("0 IDs scraped. Leaving latest/ unchanged.")
