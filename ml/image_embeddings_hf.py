@@ -9,16 +9,16 @@
 # ]
 # ///
 """
-Embed Food Cupboard product images using Qwen3-VL-Embedding-2B.
+Embed product images using Qwen3-VL-Embedding-2B.
 
-Reads:  hf://datasets/brianbarry97/supermarket-image-embeddings/food_cupboard_images.parquet
-Writes: hf://datasets/brianbarry97/supermarket-image-embeddings/food_cupboard_embeddings.parquet
+Reads:  hf://datasets/brianbarry97/irish_supermarket_data/images/*.parquet
+Writes: hf://datasets/brianbarry97/irish_supermarket_data/all_supermarket_embeddings.parquet
 
 Smoke test (200 rows):
-    uvx --from "huggingface_hub" hf jobs uv run ml/image_embed_hf_job.py --flavor a100-large --env SUBSET=200 --secrets HF_TOKEN=$(cat ~/.cache/huggingface/token)
+    uvx --from "huggingface_hub" hf jobs uv run ml/image_embeddings_hf.py --flavor a100-large --env SUBSET=200 --secrets HF_TOKEN=$(cat ~/.cache/huggingface/token)
 
 Full run:
-    uvx --from "huggingface_hub" hf jobs uv run ml/image_embed_hf_job.py --flavor a100-large --secrets HF_TOKEN=$(cat ~/.cache/huggingface/token)
+    uvx --from "huggingface_hub" hf jobs uv run ml/image_embeddings_hf.py --flavor a100-large --secrets HF_TOKEN=$(cat ~/.cache/huggingface/token)
 """
 
 import io
@@ -29,7 +29,7 @@ from huggingface_hub import HfFileSystem
 from PIL import Image
 from sentence_transformers import SentenceTransformer
 
-DATASET_ID = "brianbarry97/supermarket-image-embeddings"
+DATASET_ID = "brianbarry97/irish_supermarket_data"
 MODEL_ID = "Qwen/Qwen3-VL-Embedding-2B"
 BATCH_SIZE = 128
 SUBSET = int(os.environ.get("SUBSET", "0"))
@@ -40,9 +40,9 @@ storage_options = {"token": token}
 print(f"Loading {MODEL_ID}...")
 model = SentenceTransformer(MODEL_ID)
 
-print("Reading input parquet...")
+print("Reading input parquet shards...")
 df = pl.read_parquet(
-    f"hf://datasets/{DATASET_ID}/food_cupboard_images.parquet",
+    f"hf://datasets/{DATASET_ID}/images/*.parquet",
     storage_options=storage_options,
 )
 
@@ -50,7 +50,7 @@ if SUBSET:
     df = df.head(SUBSET)
     print(f"Subset mode: using first {SUBSET} rows")
 
-print(f"Loaded {len(df)} products — {df['retailer'].value_counts().sort('retailer')}")
+print(f"Loaded {len(df)} products — {df['supermarket'].value_counts().sort('supermarket')}")
 
 image_bytes_col = df["image_bytes"].to_list()
 n = len(image_bytes_col)
@@ -79,7 +79,7 @@ print("Done.")
 
 result_df = df.drop("image_bytes").with_columns(pl.Series("embedding", embedding_col))
 
-out_path = f"datasets/{DATASET_ID}/food_cupboard_embeddings{'_subset' if SUBSET else ''}.parquet"
+out_path = f"datasets/{DATASET_ID}/all_supermarket_embeddings{'_subset' if SUBSET else ''}.parquet"
 print(f"Writing to hf://{out_path} ...")
 with HfFileSystem(token=token).open(out_path, "wb") as f:
     result_df.write_parquet(f)

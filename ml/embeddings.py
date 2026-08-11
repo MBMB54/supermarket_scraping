@@ -83,7 +83,7 @@ def main() -> None:
         return
 
     logger.info(f"Embedding {len(new_products):,} new products with {MODEL_ID}")
-    model = SentenceTransformer(MODEL_ID)
+    model = SentenceTransformer(MODEL_ID, trust_remote_code=True)
     titles_for_embedding = new_products["title_cleaned"].to_list()
     embeddings = model.encode(
         titles_for_embedding,
