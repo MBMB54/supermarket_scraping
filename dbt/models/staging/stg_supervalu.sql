@@ -11,14 +11,14 @@ SELECT
     data.brand AS brand,
     data.unitsOfSize.size AS quantity,
     NULLIF(LOWER(data.unitsOfSize.abbreviation), '') AS unit,
-    TRY_CAST(regexp_replace(data.unitPrice, '[^0-9.]', '', 'g') AS FLOAT) AS unit_price,
-    TRY_CAST(regexp_replace(data.wasUnitPrice, '[^0-9.]', '', 'g') AS FLOAT) AS was_unit_price,
+    TRY_CAST(regexp_replace(data.unitPrice, '[^0-9.]', '', 'g') AS DOUBLE) AS unit_price,
+    TRY_CAST(regexp_replace(data.wasUnitPrice, '[^0-9.]', '', 'g') AS DOUBLE) AS was_unit_price,
     LOWER(data.unitOfMeasure.abbreviation) AS unit_of_measure,
     -- SuperValu API returns the effective (already-discounted) price; was_price is original when discounted
-    TRY_CAST(regexp_replace(data.price, '[^0-9.]', '', 'g') AS FLOAT) AS price,
-    TRY_CAST(regexp_replace(data.wasPrice, '[^0-9.]', '', 'g') AS FLOAT) AS was_price,
-    TRY_CAST(json_extract_string(data.promotions, '$[0].startDateUtc') AS DATE) AS promotion_start_date,
-    TRY_CAST(json_extract_string(data.promotions, '$[0].endDateUtc') AS DATE) AS promotion_end_date,
+    TRY_CAST(regexp_replace(data.price, '[^0-9.]', '', 'g') AS DOUBLE) AS price,
+    TRY_CAST(regexp_replace(data.wasPrice, '[^0-9.]', '', 'g') AS DOUBLE) AS was_price,
+    {{ utc_to_local_date("json_extract_string(data.promotions, '$[0].startDateUtc')") }} AS promotion_start_date,
+    {{ utc_to_local_date("json_extract_string(data.promotions, '$[0].endDateUtc')") }} AS promotion_end_date,
     -- tprInfo covers standalone TPR price cuts; dates arrive in DD/MM/YYYY format
     CAST(TRY_STRPTIME(data.tprInfo.effectiveFrom, '%d/%m/%Y') AS DATE) AS discount_start_date,
     CAST(TRY_STRPTIME(data.tprInfo.effectiveUntil, '%d/%m/%Y') AS DATE) AS discount_end_date,
@@ -35,6 +35,7 @@ SELECT
     data.attributes.vegan AS is_vegan,
     data.attributes.vegetarian AS is_vegetarian,
     data.attributes['gluten free'] AS is_gluten_free,
+    data.nutritionProfiles['per 100g']['Total Fat'].size AS fat_per_100g,
     data.primaryImage.zoom AS image_url,
     data.available AS is_product_available,
     -- is_discount: wasPrice populated whenever a per-unit price cut applies (TPR or ProductPromotion)

@@ -1,4 +1,4 @@
-{{ config(materialized='view') }}
+{{ config(materialized='table') }}
 
 WITH cleaned AS (
 SELECT
@@ -54,6 +54,7 @@ SELECT
     is_vegan,
     is_vegetarian,
     is_gluten_free,
+    fat_per_100g,
     image_url,
     is_product_available,
     is_own_brand,
@@ -70,10 +71,10 @@ SELECT
     brand::VARCHAR AS brand,
     is_own_brand::BOOLEAN AS is_own_brand,
     item_description::VARCHAR AS item_description,
-    category_1::VARCHAR AS category_1,
-    category_2::VARCHAR AS category_2,
-    category_3::VARCHAR AS category_3,
-    category_4::VARCHAR AS category_4,
+    {{ normalize_category('category_1') }}::VARCHAR AS category_1,
+    {{ normalize_category('category_2') }}::VARCHAR AS category_2,
+    {{ normalize_category('category_3') }}::VARCHAR AS category_3,
+    {{ normalize_category('category_4') }}::VARCHAR AS category_4,
     is_discount::BOOLEAN AS is_discount,
     is_promotion::BOOLEAN AS is_promotion,
     price::DOUBLE AS price,
@@ -101,11 +102,27 @@ SELECT
         k -> json_extract_string(allergy_advice, '$.' || k) LIKE '%May Contain%'
     )::VARCHAR[] AS may_contain_allergens,
     dietary_flags::VARCHAR[] AS dietary_flags,
-    is_vegan::BOOLEAN AS is_vegan,
-    is_vegetarian::BOOLEAN AS is_vegetarian,
-    is_gluten_free::BOOLEAN AS is_gluten_free,
+    -- Same source-data disagreement pattern as is_gluten_free below: attributes.vegan/
+    -- .vegetarian and attributes.lifestyle (-> dietary_flags) are independent fields
+    -- that frequently disagree — is_vegetarian in particular misses the majority of
+    -- actually-vegetarian products if read from the boolean attribute alone.
+    (coalesce(is_vegan, false) OR coalesce(list_contains(dietary_flags, 'Suitable for Vegans'), false))::BOOLEAN AS is_vegan,
+    (coalesce(is_vegetarian, false) OR coalesce(list_contains(dietary_flags, 'Suitable for Vegetarians'), false))::BOOLEAN AS is_vegetarian,
+    -- SuperValu's raw data disagrees with itself here: attributes['gluten free'] and
+    -- attributes.lifestyle (-> dietary_flags) are independent fields that don't always
+    -- match. OR'd together to avoid false negatives for a dietary-restriction filter.
+    (coalesce(is_gluten_free, false) OR coalesce(list_contains(dietary_flags, 'Gluten free'), false))::BOOLEAN AS is_gluten_free,
     list_contains(dietary_flags, 'Organic')::BOOLEAN AS is_organic,
-    CAST(NULL AS BOOLEAN) AS is_low_fat,
+    -- Three independent signals OR'd together: the lifestyle tag, explicit "fat free"/
+    -- "0 percent fat" wording in the title (normalize_text has already turned '%' into
+    -- ' percent'), and the actual nutrition panel (regulatory threshold: <=3g/100g).
+    -- None of the three alone is complete — see CLAUDE.md/session notes for why.
+    (
+        coalesce(list_contains(dietary_flags, 'Low Fat'), false)
+        OR title LIKE '%fat free%'
+        OR title LIKE '%0 percent fat%'
+        OR (fat_per_100g IS NOT NULL AND fat_per_100g <= 3.0)
+    )::BOOLEAN AS is_low_fat,
     list_contains(dietary_flags, 'Kosher')::BOOLEAN AS is_kosher,
     list_contains(dietary_flags, 'Halal')::BOOLEAN AS is_halal,
     image_url::VARCHAR AS image_url,

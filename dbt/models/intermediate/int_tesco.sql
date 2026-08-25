@@ -51,6 +51,8 @@ SELECT
     -- structured allergen data: list of {name, values} structs, e.g. {"name": "Contains", "values": ["Milk"]}
     allergen_info,
     dietary_flags,
+    certification_flags,
+    nutritional_claims,
     image_url,
     is_product_available,
     scraped_date
@@ -78,10 +80,10 @@ SELECT
     brand::VARCHAR AS brand,
     CAST(NULL AS BOOLEAN) AS is_own_brand,
     item_description::VARCHAR AS item_description,
-    category_1::VARCHAR AS category_1,
-    category_2::VARCHAR AS category_2,
-    category_3::VARCHAR AS category_3,
-    category_4::VARCHAR AS category_4,
+    {{ normalize_category('category_1') }}::VARCHAR AS category_1,
+    {{ normalize_category('category_2') }}::VARCHAR AS category_2,
+    {{ normalize_category('category_3') }}::VARCHAR AS category_3,
+    {{ normalize_category('category_4') }}::VARCHAR AS category_4,
     is_discount::BOOLEAN AS is_discount,
     is_promotion::BOOLEAN AS is_promotion,
     price::DOUBLE AS price,
@@ -122,11 +124,47 @@ SELECT
         )
     )::VARCHAR[] AS may_contain_allergens,
     dietary_flags::VARCHAR[] AS dietary_flags,
+    -- Unlike SuperValu, Tesco's dietary_flags (foodIcons) is NOT under-reporting here: it's a
+    -- clean exact subset of the broader on-page icon badges (certification_flags) for every
+    -- shared tag (e.g. 'Suitable for Vegans' 833/833, 'Gluten free' 342/342, 'Halal' 89/89,
+    -- 'Kosher' 103/103 — identical counts either way), with disagreement counts of just 7/2/8/9
+    -- products respectively — noise, not a real gap. Left as single-source.
     list_contains(dietary_flags, 'Suitable for Vegans')      AS is_vegan,
     list_contains(dietary_flags, 'Suitable for Vegetarians') AS is_vegetarian,
     list_contains(dietary_flags, 'Gluten free')              AS is_gluten_free,
-    list_contains(dietary_flags, 'Organic')                  AS is_organic,
-    list_contains(dietary_flags, 'Low Fat')                  AS is_low_fat,
+    -- Organic IS a real gap: certification_flags (the full icon badge list) carries specific
+    -- organic-certification-body marks (EU Organic, Soil Association Organic, Irish Organic
+    -- Association, etc.) that aren't folded into dietary_flags' generic 'Organic' tag — 33
+    -- products (128 -> 161, +26%) are organic-certified but only visible via the badge text.
+    (
+        coalesce(list_contains(dietary_flags, 'Organic'), false)
+        OR coalesce(len(list_filter(certification_flags, x -> x ILIKE '%organic%')) > 0, false)
+    )::BOOLEAN AS is_organic,
+    -- Three independent signals OR'd together, mirroring SuperValu's is_low_fat: the foodIcons
+    -- 'Low Fat' tag, explicit "low fat"/"fat free"/"0 percent fat" wording in the (already
+    -- normalized) title, and Tesco's free-text regulatory nutritionalClaims (e.g. 'Low Fat',
+    -- 'Low in fat', 'Fat free' — deliberately excludes 'low in saturated fat' claims, which are
+    -- a distinct regulatory claim about saturates, not total fat). 97 -> ~142 true (+46%).
+    -- NOT using a nutrition-panel fat-grams threshold here, unlike SuperValu: Tesco's
+    -- nutritionInfo is a free-text table (20+ 'per 100g'/'per 100ml' header variants, only
+    -- ~10% of products have a parseable row) rather than SuperValu's typed per-100g map, and a
+    -- naive <=3g/100g threshold flags plenty of naturally-low-fat items that aren't marketed as
+    -- diet products (meringues, chutney, deli ham, soup) — a much noisier signal than the
+    -- SuperValu case, so left out; see session notes if this should be reconsidered.
+    (
+        coalesce(list_contains(dietary_flags, 'Low Fat'), false)
+        OR title LIKE '%low fat%'
+        OR title LIKE '%fat free%'
+        OR title LIKE '%0 percent fat%'
+        OR coalesce(
+            len(list_filter(
+                nutritional_claims,
+                x -> lower(x) LIKE '%low fat%' OR lower(x) LIKE '%fat free%'
+                     OR lower(x) LIKE '%low in fat%'
+            )) > 0,
+            false
+        )
+    )::BOOLEAN AS is_low_fat,
     list_contains(dietary_flags, 'Kosher')                   AS is_kosher,
     list_contains(dietary_flags, 'Halal')                    AS is_halal,
     image_url::VARCHAR AS image_url,

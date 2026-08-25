@@ -51,6 +51,22 @@ allergy_json AS (
         to_json(map_from_entries(list_zip(list(allergen_name), list(allergen_status)))) AS allergy_advice
     FROM allergy_dedup
     GROUP BY product_id
+),
+
+-- Dunnes also embeds a "Lifestyle" tag list in the description HTML (e.g. "Suitable for
+-- Vegetarians", "Suitable for Vegans", "Gluten free", "Low Fat", "Organic", "Kosher",
+-- "Halal") -- same free-text-section pattern as Ingredients/Allergy Advice above. Verified
+-- against the raw data: its Vegetarian/Vegan/Gluten free/Organic/Low Fat tag counts match
+-- data.attributes.other/.dietary (the structured arrays) and data.attributes.vegan/
+-- .vegetarian/['gluten free']/.organic/.lowfat (the booleans) exactly -- all three sources
+-- agree with zero disagreements, so those flags don't need fixing. But Kosher and Halal
+-- ONLY show up in this Lifestyle text -- there's no structured field for them at all -- so
+-- this is the only usable raw signal for is_kosher/is_halal.
+with_lifestyle_section AS (
+    SELECT
+        *,
+        regexp_extract(data.description, '<b>Lifestyle</b><br/>(.*?)(?:<br/><br/>|$)', 1) AS lifestyle_section
+    FROM with_allergy_section
 )
 
 SELECT
@@ -60,14 +76,14 @@ SELECT
     data.brand AS brand,
     data.unitsOfSize.size AS quantity,
     NULLIF(LOWER(data.unitsOfSize.abbreviation), '') AS unit,
-    TRY_CAST(regexp_replace(data.unitPrice, '[^0-9.]', '', 'g') AS FLOAT) AS unit_price,
-    TRY_CAST(regexp_replace(data.wasUnitPrice, '[^0-9.]', '', 'g') AS FLOAT) AS was_unit_price,
+    TRY_CAST(regexp_replace(data.unitPrice, '[^0-9.]', '', 'g') AS DOUBLE) AS unit_price,
+    TRY_CAST(regexp_replace(data.wasUnitPrice, '[^0-9.]', '', 'g') AS DOUBLE) AS was_unit_price,
     LOWER(data.unitOfMeasure.abbreviation) AS unit_of_measure,
     -- SuperValu API returns the effective (already-discounted) price; was_price is original when discounted
-    TRY_CAST(regexp_replace(data.price, '[^0-9.]', '', 'g') AS FLOAT) AS price,
-    TRY_CAST(regexp_replace(data.wasPrice, '[^0-9.]', '', 'g') AS FLOAT) AS was_price,
-    TRY_CAST(json_extract_string(data.promotions, '$[0].startDateUtc') AS DATE) AS promotion_start_date,
-    TRY_CAST(json_extract_string(data.promotions, '$[0].endDateUtc') AS DATE) AS promotion_end_date,
+    TRY_CAST(regexp_replace(data.price, '[^0-9.]', '', 'g') AS DOUBLE) AS price,
+    TRY_CAST(regexp_replace(data.wasPrice, '[^0-9.]', '', 'g') AS DOUBLE) AS was_price,
+    {{ utc_to_local_date("json_extract_string(data.promotions, '$[0].startDateUtc')") }} AS promotion_start_date,
+    {{ utc_to_local_date("json_extract_string(data.promotions, '$[0].endDateUtc')") }} AS promotion_end_date,
     -- tprInfo covers standalone TPR price cuts; dates arrive in DD/MM/YYYY format
     CAST(TRY_STRPTIME(data.tprInfo.effectiveFrom, '%d/%m/%Y') AS DATE) AS discount_start_date,
     CAST(TRY_STRPTIME(data.tprInfo.effectiveUntil, '%d/%m/%Y') AS DATE) AS discount_end_date,
@@ -115,6 +131,8 @@ SELECT
     data.attributes.organic AS is_organic,
     data.attributes.lowfat AS is_low_fat,
     data.attributes.other AS other_dietary,
+    CASE WHEN lifestyle_section = '' THEN NULL ELSE string_split(lifestyle_section, '<br/>') END AS dietary_flags,
+    data.nutritionProfiles['per 100g']['Total Fat'].size AS fat_per_100g,
     allergy_json.allergy_advice AS allergy_advice,
     data.primaryImage.zoom AS image_url,
     data.available AS is_product_available,
@@ -128,6 +146,6 @@ SELECT
     END AS is_promotion,
     data.attributes.OwnBrand AS is_own_brand,
     CURRENT_DATE AS scraped_date
-FROM with_allergy_section
+FROM with_lifestyle_section
 LEFT JOIN allergy_json USING (product_id)
 WHERE data.name IS NOT NULL

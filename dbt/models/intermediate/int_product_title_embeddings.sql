@@ -6,7 +6,7 @@ SELECT
     id,
     supermarket,
     title,
-    title_embedding,
+    title_embedding::FLOAT[640] AS title_embedding,
     embedding_model,
     embedded_at
 FROM read_parquet('s3://ie-supermarket-data/processed/embeddings/{{ model_slug }}/product_title_embeddings.parquet')
