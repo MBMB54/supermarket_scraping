@@ -20,7 +20,7 @@ from sentence_transformers import SentenceTransformer
 
 load_dotenv()
 
-logfire.configure(send_to_logfire=False)
+logfire.configure(send_to_logfire="if-token-present")
 logfire.instrument_pydantic_ai()
 
 bi_encoder = SentenceTransformer("microsoft/harrier-oss-v1-270m", trust_remote_code=True)
@@ -105,11 +105,6 @@ agent = Agent(
     deps_type=Deps,
     retries={"output": 2},
 )
-
-
-@agent.tool_plain
-def get_weather(city: str) -> str:
-    return f"The weather in {city} is sunny"
 
 
 @agent.system_prompt

@@ -10,6 +10,7 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "polars>=1.37.1",
     "tenacity>=8.0.0",
+    "asttokens>=2.4.1",
 ]
 
 [dependency-groups]
@@ -42,7 +43,7 @@ ml = [
     "scikit-learn>=1.8.0",
     "spacy>=3.8.11",
     "transformers>=5.0.0",
-    "sentence-transformers[image]>=5.2.2",
+    "sentence-transformers[image]>=6.0.0",
     "rerankers>=0.10.0",
     "gliner2>=1.2.4",
     "python-levenshtein>=0.27.3",
@@ -53,6 +54,14 @@ ml = [
     "huggingface-hub>=1.19.0",
     "datasets>=5.0.0",
     "polars-distance>=0.5.3",
+   
+]
+
+agents = [
+ "pydantic-ai>=2.8.0",
+ "devtools>=0.12.2",
+ "pydantic-ai-slim[web,web-fetch]>=2.8.0",
+ "logfire>=4.15.0",
 ]
 dbt = [
     "dbt-core>=1.11.11",
