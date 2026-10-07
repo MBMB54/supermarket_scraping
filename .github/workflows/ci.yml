@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore: ["local_implementation"]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen --group dev --group test
+      - run: uv run ruff check . --extend-exclude ml
+      - run: uv run ruff format --check scraper_common tests aldi dunnes supervalu tesco lambda
+      - run: uv run pytest -q

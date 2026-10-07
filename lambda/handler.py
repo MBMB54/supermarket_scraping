@@ -27,8 +27,17 @@ def submit_ids_job(batch, retailer: str, script: str, job_definition: str) -> di
     return {"stage": "ids", "retailer": retailer, "jobId": job_id}
 
 
-def submit_scraper_chunks(batch, retailer: str, api_script: str, ids_job_id: str | None = None) -> list[dict]:
+# Tesco is rate-limited to ~2 req/s aggregate (docs/tesco-429-incident.md): a compliant full pass
+# is ~166 min, so override the job definition's 7200s attempt timeout for tesco chunks.
+TESCO_ATTEMPT_DURATION_SECONDS = 14400
+
+
+def submit_scraper_chunks(
+    batch, retailer: str, api_script: str, ids_job_id: str | None = None
+) -> list[dict]:
     kwargs = {}
+    if retailer == "tesco":
+        kwargs["timeout"] = {"attemptDurationSeconds": TESCO_ATTEMPT_DURATION_SECONDS}
     if ids_job_id:
         kwargs["dependsOn"] = [{"jobId": ids_job_id, "type": "SEQUENTIAL"}]
 
@@ -48,7 +57,14 @@ def submit_scraper_chunks(batch, retailer: str, api_script: str, ids_job_id: str
             **kwargs,
         )
         logger.info(f"Submitted {retailer} chunk {chunk_id}/{TOTAL_CHUNKS}: {response['jobId']}")
-        jobs.append({"stage": "scraper", "retailer": retailer, "chunkId": chunk_id, "jobId": response["jobId"]})
+        jobs.append(
+            {
+                "stage": "scraper",
+                "retailer": retailer,
+                "chunkId": chunk_id,
+                "jobId": response["jobId"],
+            }
+        )
     return jobs
 
 
@@ -64,7 +80,9 @@ def lambda_handler(event, context):
 
     supervalu_ids = submit_ids_job(batch, "supervalu", "supervalu_ids.py", SCRAPER_JOB_DEFINITION)
     submitted.append(supervalu_ids)
-    submitted.extend(submit_scraper_chunks(batch, "supervalu", "supervalu_api.py", supervalu_ids["jobId"]))
+    submitted.extend(
+        submit_scraper_chunks(batch, "supervalu", "supervalu_api.py", supervalu_ids["jobId"])
+    )
 
     dunnes_ids = submit_ids_job(batch, "dunnes", "dunnes_ids.py", SCRAPER_JOB_DEFINITION)
     submitted.append(dunnes_ids)

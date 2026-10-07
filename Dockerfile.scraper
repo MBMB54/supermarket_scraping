@@ -4,12 +4,15 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-ENV UV_PROJECT_ENVIRONMENT=/usr/local
+ENV UV_PROJECT_ENVIRONMENT=/usr/local \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project --group scraper
 RUN patchright install chrome --with-deps
 
+COPY scraper_common/ ./scraper_common/
 COPY tesco/tesco_api.py ./
 COPY tesco/tesco_ids.py ./
 COPY tesco/graphql_query.txt ./

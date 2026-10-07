@@ -4,11 +4,14 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-ENV UV_PROJECT_ENVIRONMENT=/usr/local
+ENV UV_PROJECT_ENVIRONMENT=/usr/local \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project --group ids
 
+COPY scraper_common/ ./scraper_common/
 COPY aldi/aldi_ids.py ./
 
 CMD ["python", "aldi_ids.py"]
