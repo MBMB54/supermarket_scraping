@@ -2,11 +2,35 @@ version: 2
 
 sources:
   - name: external_source
-    tables:
-      - name: aldi
-      - name: tesco
-      - name: dunnes
-      - name: supervalu
+    description: >
+      Gzipped JSONL scrape output in S3, read in place by DuckDB. One folder per retailer per run
+      date. Raw files carry no timestamp column, so freshness is enforced by the date-keyed path:
+      a missing partition makes the read fail, and min_row_count catches an empty one.
     config:
       meta:
-        external_location: "s3://ie-supermarket-data/raw/{name}/{{ var('run_date', modules.datetime.date.today().isoformat()) }}/*.jsonl.gz"
+        external_location: "s3://ie-supermarket-data/raw/{name}/{{ run_date() | trim }}/*.jsonl.gz"
+    tables:
+      - name: aldi
+        description: Aldi API responses, one record per sku requested.
+        data_tests:
+          - min_row_count:
+              arguments:
+                min_rows: 1500
+      - name: tesco
+        description: Tesco API responses, one record per tpnc requested. Failed fetches have null data.
+        data_tests:
+          - min_row_count:
+              arguments:
+                min_rows: 5000
+      - name: dunnes
+        description: Dunnes storefront API responses, one record per product id and store.
+        data_tests:
+          - min_row_count:
+              arguments:
+                min_rows: 3000
+      - name: supervalu
+        description: SuperValu storefront API responses, one record per product id and store.
+        data_tests:
+          - min_row_count:
+              arguments:
+                min_rows: 5000

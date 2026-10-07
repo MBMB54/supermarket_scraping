@@ -1,0 +1,144 @@
+version: 2
+
+macros:
+  - name: normalize_text
+    description: Lower-cases, strips accents, spells out % and &, and removes punctuation.
+    arguments:
+      - name: col
+        type: string
+        description: SQL expression to normalise.
+  - name: clean_title
+    description: normalize_text plus removal of pack-size, weight and duration quantifiers (500g, 8 pack, 2 x 400g).
+    arguments:
+      - name: col
+        type: string
+        description: SQL expression holding the raw title.
+  - name: normalize_category
+    description: Trims and collapses whitespace; empty strings become NULL.
+    arguments:
+      - name: col
+        type: string
+        description: Category column.
+  - name: utc_to_local_date
+    description: UTC timestamp (string or naive TIMESTAMP) to a Europe/Dublin DATE.
+    arguments:
+      - name: col
+        type: string
+        description: Timestamp expression.
+  - name: unit_qty_normalised
+    description: Converts a pack quantity to kg, l or m; units listed in count_units use the count itself; other non-measured units get 1.0.
+    arguments:
+      - name: unit
+        type: string
+        description: Lower-cased unit column.
+      - name: qty
+        type: string
+        description: Quantity column.
+      - name: count_units
+        type: list
+        description: Units that are genuine item counts (optional).
+  - name: unit_normalised
+    description: Maps a unit to kg, l, m or each.
+    arguments:
+      - name: unit
+        type: string
+        description: Lower-cased unit column.
+  - name: price_per_unit_normalised
+    description: Price divided by normalised quantity, rounded to 2 dp; NULL when quantity is 0.
+    arguments:
+      - name: price
+        type: string
+        description: Price expression.
+      - name: qty_normalised
+        type: string
+        description: Normalised quantity expression.
+  - name: parse_price
+    description: Strips currency symbols and text from a display string and casts to DOUBLE.
+    arguments:
+      - name: col
+        type: string
+        description: Price string expression.
+  - name: parse_dd_mm_yyyy
+    description: Parses a DD/MM/YYYY string to DATE (NULL if invalid).
+    arguments:
+      - name: col
+        type: string
+        description: Date string expression.
+  - name: first_promotion_field
+    description: Extracts a field from the first element of a JSON promotions array.
+    arguments:
+      - name: promotions
+        type: string
+        description: JSON array column.
+      - name: key
+        type: string
+        description: Field name.
+  - name: is_multibuy_promotion
+    description: TRUE when the first promotion is a Bulk, Bundle or Custom promotion.
+    arguments:
+      - name: promotions
+        type: string
+        description: JSON array column.
+  - name: allergens_from_json_map
+    description: Allergen names with a given status ('contains' or 'may_contain') from a JSON name-to-status map.
+    arguments:
+      - name: col
+        type: string
+        description: JSON map column.
+      - name: status
+        type: string
+        description: contains or may_contain.
+  - name: allergens_from_structs
+    description: Flattened allergen values from {name, values} structs for a given status.
+    arguments:
+      - name: col
+        type: string
+        description: List-of-struct column.
+      - name: status
+        type: string
+        description: contains or may_contain.
+  - name: has_flag
+    description: NULL-safe list_contains on a tag list.
+    arguments:
+      - name: flags
+        type: string
+        description: List column.
+      - name: tag
+        type: string
+        description: Tag to look for.
+  - name: low_fat_title_claim
+    description: TRUE when a normalised title says fat free or 0 percent fat.
+    arguments:
+      - name: title
+        type: string
+        description: Normalised title column.
+  - name: low_fat_nutrition_panel
+    description: TRUE when total fat is at most 3 g per 100 g.
+    arguments:
+      - name: fat_per_100g
+        type: string
+        description: Fat column.
+  - name: html_section
+    description: Body of a bold-headed section in Dunnes description HTML.
+    arguments:
+      - name: html
+        type: string
+        description: Description column.
+      - name: heading
+        type: string
+        description: Section heading.
+  - name: html_section_all
+    description: Like html_section but returns all matches as a list.
+    arguments:
+      - name: html
+        type: string
+        description: Description column.
+      - name: heading
+        type: string
+        description: Section heading.
+  - name: html_ingredients_text
+    description: Cleans an ingredients HTML section to a single string.
+    arguments:
+      - name: section
+        type: string
+        description: Extracted section.

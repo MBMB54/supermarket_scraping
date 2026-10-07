@@ -1,0 +1,268 @@
+version: 2
+
+models:
+  - name: fct_product_listings
+    description: >
+      One row per retailer product per dbt run, unioning int_tesco, int_dunnes, int_supervalu and int_aldi. The final table for analysis; also the input to the price snapshot.
+    config:
+      contract:
+        enforced: true
+    constraints:
+      - type: primary_key
+        columns: [supermarket, id]
+        warn_unenforced: false
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 30000
+      - unique_combination:
+          arguments:
+            columns: [supermarket, id]
+    columns:
+      - name: id
+        description: "{{ doc('col_id') }}"
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - not_null
+      - name: supermarket
+        description: "{{ doc('col_supermarket') }}"
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['tesco','aldi','dunnes','supervalu']
+      - name: title
+        description: "{{ doc('col_title') }}"
+        data_type: varchar
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: title_cleaned
+        description: "{{ doc('col_title_cleaned') }}"
+        data_type: varchar
+      - name: brand
+        description: "{{ doc('col_brand') }}"
+        data_type: varchar
+      - name: is_own_brand
+        description: "{{ doc('col_is_own_brand') }}"
+        data_type: boolean
+      - name: item_description
+        description: "{{ doc('col_item_description') }}"
+        data_type: varchar
+      - name: category_1
+        description: "{{ doc('col_category_1') }}"
+        data_type: varchar
+      - name: category_2
+        description: "{{ doc('col_category_2') }}"
+        data_type: varchar
+      - name: category_3
+        description: "{{ doc('col_category_3') }}"
+        data_type: varchar
+      - name: category_4
+        description: "{{ doc('col_category_4') }}"
+        data_type: varchar
+      - name: is_discount
+        description: "{{ doc('col_is_discount') }}"
+        data_type: boolean
+      - name: is_promotion
+        description: "{{ doc('col_is_promotion') }}"
+        data_type: boolean
+      - name: price
+        description: "{{ doc('col_price') }}"
+        data_type: double
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1000
+      - name: was_price
+        description: "{{ doc('col_was_price') }}"
+        data_type: double
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1000
+      - name: selling_size
+        description: "{{ doc('col_selling_size') }}"
+        data_type: double
+      - name: unit
+        description: "{{ doc('col_unit') }}"
+        data_type: varchar
+      - name: unit_qty_normalised
+        description: "{{ doc('col_unit_qty_normalised') }}"
+        data_type: double
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+      - name: unit_normalised
+        description: "{{ doc('col_unit_normalised') }}"
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['kg','l','m','each']
+              config:
+                severity: warn
+      - name: unit_price
+        description: "{{ doc('col_unit_price') }}"
+        data_type: double
+      - name: price_per_unit_normalised
+        description: "{{ doc('col_price_per_unit_normalised') }}"
+        data_type: double
+      - name: promotion_description
+        description: "{{ doc('col_promotion_description') }}"
+        data_type: varchar
+      - name: promotion_type
+        description: "{{ doc('col_promotion_type') }}"
+        data_type: varchar
+      - name: promotion_qualities
+        description: "{{ doc('col_promotion_qualities') }}"
+        data_type: varchar[]
+      - name: promotion_start_date
+        description: "{{ doc('col_promotion_start_date') }}"
+        data_type: date
+      - name: promotion_end_date
+        description: "{{ doc('col_promotion_end_date') }}"
+        data_type: date
+      - name: discount_start_date
+        description: "{{ doc('col_discount_start_date') }}"
+        data_type: date
+      - name: discount_end_date
+        description: "{{ doc('col_discount_end_date') }}"
+        data_type: date
+      - name: ingredients
+        description: "{{ doc('col_ingredients') }}"
+        data_type: varchar
+      - name: contains_allergens
+        description: "{{ doc('col_contains_allergens') }}"
+        data_type: varchar[]
+      - name: may_contain_allergens
+        description: "{{ doc('col_may_contain_allergens') }}"
+        data_type: varchar[]
+      - name: dietary_flags
+        description: "{{ doc('col_dietary_flags') }}"
+        data_type: varchar[]
+      - name: is_vegan
+        description: "{{ doc('col_is_vegan') }}"
+        data_type: boolean
+      - name: is_vegetarian
+        description: "{{ doc('col_is_vegetarian') }}"
+        data_type: boolean
+      - name: is_gluten_free
+        description: "{{ doc('col_is_gluten_free') }}"
+        data_type: boolean
+      - name: is_organic
+        description: "{{ doc('col_is_organic') }}"
+        data_type: boolean
+      - name: is_low_fat
+        description: "{{ doc('col_is_low_fat') }}"
+        data_type: boolean
+      - name: is_kosher
+        description: "{{ doc('col_is_kosher') }}"
+        data_type: boolean
+      - name: is_halal
+        description: "{{ doc('col_is_halal') }}"
+        data_type: boolean
+      - name: is_dairy_free
+        description: "{{ doc('col_is_dairy_free') }}"
+        data_type: boolean
+      - name: is_sugar_free
+        description: "{{ doc('col_is_sugar_free') }}"
+        data_type: boolean
+      - name: has_no_added_sugar
+        description: "{{ doc('col_has_no_added_sugar') }}"
+        data_type: boolean
+      - name: is_diabetic_friendly
+        description: "{{ doc('col_is_diabetic_friendly') }}"
+        data_type: boolean
+      - name: image_url
+        description: "{{ doc('col_image_url') }}"
+        data_type: varchar
+      - name: is_product_available
+        description: "{{ doc('col_is_product_available') }}"
+        data_type: boolean
+      - name: scraped_date
+        description: "{{ doc('col_scraped_date') }}"
+        data_type: date
+        data_tests:
+          - not_null
+
+  - name: fct_product_price_daily
+    description: >
+      Append-only daily price facts, one row per retailer product per scrape date (run_date).
+      Written incrementally with delete+insert on the key, so reruns and out-of-order backfills are
+      safe. Failed fetches (NULL price) are excluded. Full refresh is disabled because this table
+      is the only copy of price history in the database; rebuild it by replaying run_dates.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [supermarket, id, scraped_date]
+    columns:
+      - name: supermarket
+        description: "{{ doc('col_supermarket') }}"
+        data_tests: [not_null]
+      - name: id
+        description: "{{ doc('col_id') }}"
+        data_tests: [not_null]
+      - name: scraped_date
+        description: "{{ doc('col_scraped_date') }}"
+        data_tests: [not_null]
+      - name: title
+        description: "{{ doc('col_title') }}"
+      - name: brand
+        description: "{{ doc('col_brand') }}"
+      - name: price
+        description: "{{ doc('col_price') }}"
+        data_tests: [not_null]
+      - name: was_price
+        description: "{{ doc('col_was_price') }}"
+      - name: unit_price
+        description: "{{ doc('col_unit_price') }}"
+      - name: is_discount
+        description: "{{ doc('col_is_discount') }}"
+      - name: is_promotion
+        description: "{{ doc('col_is_promotion') }}"
+
+  - name: fct_price_history
+    description: >
+      Price history as slowly-changing versions, derived from fct_product_price_daily. A new row
+      starts on the first scrape date where price, was_price or unit_price changed. Replaces the
+      dbt snapshot scd_product_prices, whose wall-clock valid_from could not handle backfills.
+      A product missing for some days keeps its last version open (valid_to only moves on a change).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [supermarket, id, valid_from]
+    columns:
+      - name: supermarket
+        description: "{{ doc('col_supermarket') }}"
+      - name: id
+        description: "{{ doc('col_id') }}"
+      - name: title
+        description: "{{ doc('col_title') }}"
+      - name: brand
+        description: "{{ doc('col_brand') }}"
+      - name: price
+        description: "{{ doc('col_price') }}"
+      - name: was_price
+        description: "{{ doc('col_was_price') }}"
+      - name: unit_price
+        description: "{{ doc('col_unit_price') }}"
+      - name: is_discount
+        description: "{{ doc('col_is_discount') }}"
+      - name: is_promotion
+        description: "{{ doc('col_is_promotion') }}"
+      - name: valid_from
+        description: First scrape date this price version was seen.
+      - name: valid_to
+        description: First scrape date of the next version (exclusive); NULL for the current version.
+      - name: is_current
+        description: TRUE for the latest version of the product.

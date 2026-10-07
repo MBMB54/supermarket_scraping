@@ -2,33 +2,367 @@ version: 2
 
 models:
   - name: stg_tesco
+    description: >
+      Tesco raw API records, one row per product id, renamed and typed only. Rows with no payload (HTTP 429 / silent failures) are deliberately kept so null_row_rate and assert_scrape_error_rate can see them.
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 5000
+      - null_row_rate:
+          name: stg_tesco_null_rows_error
+          arguments:
+            id_column: id
+            value_columns: [title, price]
+            max_pct: 5
+      - null_row_rate:
+          name: stg_tesco_null_rows_warn
+          config:
+            severity: warn
+          arguments:
+            id_column: id
+            value_columns: [title, price]
+            max_pct: 1
     columns:
       - name: id
-        description: Unique product identifier for Tesco products (raw tpnc)
-        tests:
+        description: "{{ doc('col_id') }}"
+        data_tests:
           - unique
           - not_null
+      - name: supermarket
+        description: "{{ doc('col_supermarket') }}"
+        data_tests:
+          - not_null
+      - name: title
+        description: "{{ doc('col_title') }}"
+      - name: brand
+        description: "{{ doc('col_brand') }}"
+      - name: quantity
+        description: "Pack quantity number from the retailer's size field."
+      - name: unit
+        description: "{{ doc('col_unit') }}"
+      - name: unit_price
+        description: "{{ doc('col_unit_price') }}"
+      - name: unit_of_measure
+        description: "Lower-cased unit the unit_price is quoted per (kg, ltr, ea, ...)."
+      - name: price
+        description: "{{ doc('col_price') }}"
+      - name: promotion_price
+        description: "Tesco price after the promotion discount."
+      - name: price_before_discount
+        description: "Tesco promotion price before discount."
+      - name: price_after_discount
+        description: "Tesco promotion price after discount."
+      - name: promotion_start_date
+        description: "{{ doc('col_promotion_start_date') }}"
+      - name: promotion_end_date
+        description: "{{ doc('col_promotion_end_date') }}"
+      - name: promotion_description
+        description: "{{ doc('col_promotion_description') }}"
+      - name: promotion_type
+        description: "{{ doc('col_promotion_type') }}"
+      - name: promotion_qualities
+        description: "{{ doc('col_promotion_qualities') }}"
+      - name: category_1
+        description: "{{ doc('col_category_1') }}"
+      - name: category_2
+        description: "{{ doc('col_category_2') }}"
+      - name: category_3
+        description: "{{ doc('col_category_3') }}"
+      - name: category_4
+        description: "{{ doc('col_category_4') }}"
+      - name: item_description
+        description: "{{ doc('col_item_description') }}"
+      - name: ingredients
+        description: "{{ doc('col_ingredients') }}"
+      - name: allergen_info
+        description: "Tesco allergen list of {name, values} structs (e.g. name 'Contains')."
+      - name: dietary_flags
+        description: "{{ doc('col_dietary_flags') }}"
+      - name: certification_flags
+        description: "Tesco icon badge captions, a superset of dietary_flags that includes organic certification marks."
+      - name: nutritional_claims
+        description: "Raw nutritional claims (Aldi: list of label/value structs, including allergen statements; Tesco: free-text claims)."
+      - name: image_url
+        description: "{{ doc('col_image_url') }}"
+      - name: is_product_available
+        description: "{{ doc('col_is_product_available') }}"
+      - name: is_discount
+        description: "{{ doc('col_is_discount') }}"
+      - name: is_promotion
+        description: "{{ doc('col_is_promotion') }}"
+      - name: scraped_date
+        description: "{{ doc('col_scraped_date') }}"
 
   - name: stg_aldi
+    description: >
+      Aldi raw records, one row per sku, renamed only; price and size are still display strings (parsed in int_aldi).
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 1500
+      - null_row_rate:
+          name: stg_aldi_null_rows_error
+          arguments:
+            id_column: id
+            value_columns: [title, price_display]
+            max_pct: 5
+      - null_row_rate:
+          name: stg_aldi_null_rows_warn
+          config:
+            severity: warn
+          arguments:
+            id_column: id
+            value_columns: [title, price_display]
+            max_pct: 1
     columns:
       - name: id
-        tests:
+        description: "{{ doc('col_id') }}"
+        data_tests:
           - unique
           - not_null
-
+      - name: supermarket
+        description: "{{ doc('col_supermarket') }}"
+        data_tests:
+          - not_null
+      - name: title
+        description: "{{ doc('col_title') }}"
+      - name: brand
+        description: "{{ doc('col_brand') }}"
+      - name: selling_size
+        description: "Raw pack size text from Aldi (e.g. '500g')."
+      - name: price_display
+        description: "Aldi price as a display string including currency symbol."
+      - name: was_price_display
+        description: "Aldi previous price display string; present only when on sale."
+      - name: price_comparison_display
+        description: "Aldi per-unit price display string."
+      - name: sale_date_display
+        description: "Aldi availability date as shown in store (e.g. 'In Store Thu 30 Jul')."
+      - name: sale_date
+        description: "Aldi raw onSaleDate: when the product becomes available in store, not a discount start."
+      - name: category_1
+        description: "{{ doc('col_category_1') }}"
+      - name: category_2
+        description: "{{ doc('col_category_2') }}"
+      - name: category_3
+        description: "{{ doc('col_category_3') }}"
+      - name: category_4
+        description: "{{ doc('col_category_4') }}"
+      - name: description
+        description: "Aldi product description."
+      - name: ingredients
+        description: "{{ doc('col_ingredients') }}"
+      - name: nutritional_claims
+        description: "Raw nutritional claims (Aldi: list of label/value structs, including allergen statements; Tesco: free-text claims)."
+      - name: image_url_raw
+        description: "Aldi image URL template containing {width} and {slug} placeholders."
+      - name: is_product_available
+        description: "{{ doc('col_is_product_available') }}"
+      - name: is_sale
+        description: "TRUE when Aldi shows a was-price."
+      - name: scraped_date
+        description: "{{ doc('col_scraped_date') }}"
 
   - name: stg_dunnes
+    description: >
+      Dunnes raw records, one row per product id, renamed and typed. Drops stale ids ('Not found in any store') and rows with no name. Ingredients, allergens and lifestyle tags are parsed from item_description in int_dunnes.
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 3000
     columns:
       - name: id
-        description: Unique product identifier for Dunnes products
-        tests:
+        description: "{{ doc('col_id') }}"
+        data_tests:
           - unique
           - not_null
+      - name: supermarket
+        description: "{{ doc('col_supermarket') }}"
+        data_tests:
+          - not_null
+      - name: title
+        description: "{{ doc('col_title') }}"
+      - name: brand
+        description: "{{ doc('col_brand') }}"
+      - name: quantity
+        description: "Pack quantity number from the retailer's size field."
+      - name: unit
+        description: "{{ doc('col_unit') }}"
+      - name: unit_price
+        description: "{{ doc('col_unit_price') }}"
+      - name: was_unit_price
+        description: "Previous per-unit price in EUR. SuperValu/Dunnes only."
+      - name: unit_of_measure
+        description: "Lower-cased unit the unit_price is quoted per (kg, ltr, ea, ...)."
+      - name: price
+        description: "{{ doc('col_price') }}"
+      - name: was_price
+        description: "{{ doc('col_was_price') }}"
+      - name: promotion_start_date
+        description: "{{ doc('col_promotion_start_date') }}"
+      - name: promotion_end_date
+        description: "{{ doc('col_promotion_end_date') }}"
+      - name: discount_start_date
+        description: "{{ doc('col_discount_start_date') }}"
+      - name: discount_end_date
+        description: "{{ doc('col_discount_end_date') }}"
+      - name: promotion_description
+        description: "{{ doc('col_promotion_description') }}"
+      - name: promotion_type
+        description: "{{ doc('col_promotion_type') }}"
+      - name: category_1
+        description: "{{ doc('col_category_1') }}"
+      - name: category_2
+        description: "{{ doc('col_category_2') }}"
+      - name: category_3
+        description: "{{ doc('col_category_3') }}"
+      - name: category_4
+        description: "{{ doc('col_category_4') }}"
+      - name: item_description
+        description: "{{ doc('col_item_description') }}"
+      - name: is_gluten_free
+        description: "{{ doc('col_is_gluten_free') }}"
+      - name: is_vegetarian
+        description: "{{ doc('col_is_vegetarian') }}"
+      - name: is_vegan
+        description: "{{ doc('col_is_vegan') }}"
+      - name: is_organic
+        description: "{{ doc('col_is_organic') }}"
+      - name: is_low_fat
+        description: "{{ doc('col_is_low_fat') }}"
+      - name: other_dietary
+        description: "Dunnes attributes.other structured dietary tag list."
+      - name: fat_per_100g
+        description: "Total fat in grams per 100 g from the nutrition panel."
+      - name: image_url
+        description: "{{ doc('col_image_url') }}"
+      - name: is_product_available
+        description: "{{ doc('col_is_product_available') }}"
+      - name: is_discount
+        description: "{{ doc('col_is_discount') }}"
+      - name: is_promotion
+        description: "{{ doc('col_is_promotion') }}"
+      - name: is_own_brand
+        description: "{{ doc('col_is_own_brand') }}"
+      - name: scraped_date
+        description: "{{ doc('col_scraped_date') }}"
 
   - name: stg_supervalu
+    description: >
+      SuperValu raw records, one row per product id, renamed and typed. Drops stale ids ('Not found in any store'); genuine fetch failures are kept so they stay visible to the data-quality tests.
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 5000
+      - null_row_rate:
+          name: stg_supervalu_null_rows_error
+          arguments:
+            id_column: id
+            value_columns: [title, price]
+            max_pct: 5
+      - null_row_rate:
+          name: stg_supervalu_null_rows_warn
+          config:
+            severity: warn
+          arguments:
+            id_column: id
+            value_columns: [title, price]
+            max_pct: 1
     columns:
       - name: id
-        description: Unique product identifier for Supervalu products
-        tests:
+        description: "{{ doc('col_id') }}"
+        data_tests:
           - unique
           - not_null
+      - name: supermarket
+        description: "{{ doc('col_supermarket') }}"
+        data_tests:
+          - not_null
+      - name: title
+        description: "{{ doc('col_title') }}"
+      - name: brand
+        description: "{{ doc('col_brand') }}"
+      - name: quantity
+        description: "Pack quantity number from the retailer's size field."
+      - name: unit
+        description: "{{ doc('col_unit') }}"
+      - name: unit_price
+        description: "{{ doc('col_unit_price') }}"
+      - name: was_unit_price
+        description: "Previous per-unit price in EUR. SuperValu/Dunnes only."
+      - name: unit_of_measure
+        description: "Lower-cased unit the unit_price is quoted per (kg, ltr, ea, ...)."
+      - name: price
+        description: "{{ doc('col_price') }}"
+      - name: was_price
+        description: "{{ doc('col_was_price') }}"
+      - name: promotion_start_date
+        description: "{{ doc('col_promotion_start_date') }}"
+      - name: promotion_end_date
+        description: "{{ doc('col_promotion_end_date') }}"
+      - name: discount_start_date
+        description: "{{ doc('col_discount_start_date') }}"
+      - name: discount_end_date
+        description: "{{ doc('col_discount_end_date') }}"
+      - name: promotion_description
+        description: "{{ doc('col_promotion_description') }}"
+      - name: promotion_type
+        description: "{{ doc('col_promotion_type') }}"
+      - name: category_1
+        description: "{{ doc('col_category_1') }}"
+      - name: category_2
+        description: "{{ doc('col_category_2') }}"
+      - name: category_3
+        description: "{{ doc('col_category_3') }}"
+      - name: category_4
+        description: "{{ doc('col_category_4') }}"
+      - name: category_id_1
+        description: "SuperValu stable UUID of the level-1 category (for taxonomy drift checks)."
+      - name: category_id_2
+        description: "SuperValu stable UUID of the level-2 category."
+      - name: category_id_3
+        description: "SuperValu stable UUID of the level-3 category."
+      - name: category_id_4
+        description: "SuperValu stable UUID of the level-4 category."
+      - name: category_code_1
+        description: "SuperValu retailer category code of level 1 (e.g. O301960)."
+      - name: category_code_2
+        description: "SuperValu retailer category code of level 2."
+      - name: category_code_3
+        description: "SuperValu retailer category code of level 3."
+      - name: category_code_4
+        description: "SuperValu retailer category code of level 4."
+      - name: default_category
+        description: "SuperValu default category label."
+      - name: item_description
+        description: "{{ doc('col_item_description') }}"
+      - name: ingredients
+        description: "{{ doc('col_ingredients') }}"
+      - name: allergy_advice
+        description: "SuperValu allergen JSON map of allergen name to status (Contains / May Contain / Free From)."
+      - name: dietary_flags
+        description: "{{ doc('col_dietary_flags') }}"
+      - name: dietary_ext
+        description: "SuperValu attributes.dietary tags, a second vocabulary that disagrees with the lifestyle tags."
+      - name: is_vegan
+        description: "{{ doc('col_is_vegan') }}"
+      - name: is_vegetarian
+        description: "{{ doc('col_is_vegetarian') }}"
+      - name: is_gluten_free
+        description: "{{ doc('col_is_gluten_free') }}"
+      - name: storage_state
+        description: "SuperValu storage type: Ambient, Chilled, Frozen or Fresh."
+      - name: fat_per_100g
+        description: "Total fat in grams per 100 g from the nutrition panel."
+      - name: image_url
+        description: "{{ doc('col_image_url') }}"
+      - name: is_product_available
+        description: "{{ doc('col_is_product_available') }}"
+      - name: is_discount
+        description: "{{ doc('col_is_discount') }}"
+      - name: is_promotion
+        description: "{{ doc('col_is_promotion') }}"
+      - name: is_own_brand
+        description: "{{ doc('col_is_own_brand') }}"
+      - name: scraped_date
+        description: "{{ doc('col_scraped_date') }}"

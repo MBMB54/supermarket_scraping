@@ -1,12 +1,8 @@
 {{ config(
     materialized='external',
-    location='s3://ie-supermarket-data/processed/all_supermarket_products.parquet'
+    location=var('parquet_output_prefix') ~ '/all_supermarket_products.parquet'
 ) }}
 
-SELECT id, supermarket, title, title_cleaned FROM {{ ref('int_tesco') }}     WHERE title IS NOT NULL
-UNION ALL
-SELECT id, supermarket, title, title_cleaned FROM {{ ref('int_dunnes') }}    WHERE title IS NOT NULL
-UNION ALL
-SELECT id, supermarket, title, title_cleaned FROM {{ ref('int_supervalu') }} WHERE title IS NOT NULL
-UNION ALL
-SELECT id, supermarket, title, title_cleaned FROM {{ ref('int_aldi') }}      WHERE title IS NOT NULL
+SELECT id, supermarket, title, title_cleaned
+FROM {{ ref('fct_product_listings') }}
+WHERE title IS NOT NULL

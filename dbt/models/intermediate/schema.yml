@@ -2,41 +2,770 @@ version: 2
 
 models:
   - name: int_tesco
+    description: >
+      Tesco products on the unified retailer schema: normalised text, price/was_price from price_cut promotions, unit normalisation, structured allergens and dietary flags from food icons and badges.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 5000
     columns:
       - name: id
-        tests:
-          - unique
+        description: "{{ doc('col_id') }}"
+        data_type: varchar
+        data_tests:
           - not_null
+          - unique
       - name: supermarket
-        tests:
+        description: "{{ doc('col_supermarket') }}"
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['tesco','aldi','dunnes','supervalu']
+      - name: title
+        description: "{{ doc('col_title') }}"
+        data_type: varchar
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: title_cleaned
+        description: "{{ doc('col_title_cleaned') }}"
+        data_type: varchar
+      - name: brand
+        description: "{{ doc('col_brand') }}"
+        data_type: varchar
+      - name: is_own_brand
+        description: "{{ doc('col_is_own_brand') }}"
+        data_type: boolean
+      - name: item_description
+        description: "{{ doc('col_item_description') }}"
+        data_type: varchar
+      - name: category_1
+        description: "{{ doc('col_category_1') }}"
+        data_type: varchar
+      - name: category_2
+        description: "{{ doc('col_category_2') }}"
+        data_type: varchar
+      - name: category_3
+        description: "{{ doc('col_category_3') }}"
+        data_type: varchar
+      - name: category_4
+        description: "{{ doc('col_category_4') }}"
+        data_type: varchar
+      - name: is_discount
+        description: "{{ doc('col_is_discount') }}"
+        data_type: boolean
+      - name: is_promotion
+        description: "{{ doc('col_is_promotion') }}"
+        data_type: boolean
+      - name: price
+        description: "{{ doc('col_price') }}"
+        data_type: double
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1000
+      - name: was_price
+        description: "{{ doc('col_was_price') }}"
+        data_type: double
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1000
+      - name: selling_size
+        description: "{{ doc('col_selling_size') }}"
+        data_type: double
+      - name: unit
+        description: "{{ doc('col_unit') }}"
+        data_type: varchar
+      - name: unit_qty_normalised
+        description: "{{ doc('col_unit_qty_normalised') }}"
+        data_type: double
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+      - name: unit_normalised
+        description: "{{ doc('col_unit_normalised') }}"
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['kg','l','m','each']
+              config:
+                severity: warn
+      - name: unit_price
+        description: "{{ doc('col_unit_price') }}"
+        data_type: double
+      - name: price_per_unit_normalised
+        description: "{{ doc('col_price_per_unit_normalised') }}"
+        data_type: double
+      - name: promotion_description
+        description: "{{ doc('col_promotion_description') }}"
+        data_type: varchar
+      - name: promotion_type
+        description: "{{ doc('col_promotion_type') }}"
+        data_type: varchar
+      - name: promotion_qualities
+        description: "{{ doc('col_promotion_qualities') }}"
+        data_type: varchar[]
+      - name: promotion_start_date
+        description: "{{ doc('col_promotion_start_date') }}"
+        data_type: date
+      - name: promotion_end_date
+        description: "{{ doc('col_promotion_end_date') }}"
+        data_type: date
+      - name: discount_start_date
+        description: "{{ doc('col_discount_start_date') }}"
+        data_type: date
+      - name: discount_end_date
+        description: "{{ doc('col_discount_end_date') }}"
+        data_type: date
+      - name: ingredients
+        description: "{{ doc('col_ingredients') }}"
+        data_type: varchar
+      - name: contains_allergens
+        description: "{{ doc('col_contains_allergens') }}"
+        data_type: varchar[]
+      - name: may_contain_allergens
+        description: "{{ doc('col_may_contain_allergens') }}"
+        data_type: varchar[]
+      - name: dietary_flags
+        description: "{{ doc('col_dietary_flags') }}"
+        data_type: varchar[]
+      - name: is_vegan
+        description: "{{ doc('col_is_vegan') }}"
+        data_type: boolean
+      - name: is_vegetarian
+        description: "{{ doc('col_is_vegetarian') }}"
+        data_type: boolean
+      - name: is_gluten_free
+        description: "{{ doc('col_is_gluten_free') }}"
+        data_type: boolean
+      - name: is_organic
+        description: "{{ doc('col_is_organic') }}"
+        data_type: boolean
+      - name: is_low_fat
+        description: "{{ doc('col_is_low_fat') }}"
+        data_type: boolean
+      - name: is_kosher
+        description: "{{ doc('col_is_kosher') }}"
+        data_type: boolean
+      - name: is_halal
+        description: "{{ doc('col_is_halal') }}"
+        data_type: boolean
+      - name: is_dairy_free
+        description: "{{ doc('col_is_dairy_free') }}"
+        data_type: boolean
+      - name: is_sugar_free
+        description: "{{ doc('col_is_sugar_free') }}"
+        data_type: boolean
+      - name: has_no_added_sugar
+        description: "{{ doc('col_has_no_added_sugar') }}"
+        data_type: boolean
+      - name: is_diabetic_friendly
+        description: "{{ doc('col_is_diabetic_friendly') }}"
+        data_type: boolean
+      - name: image_url
+        description: "{{ doc('col_image_url') }}"
+        data_type: varchar
+      - name: is_product_available
+        description: "{{ doc('col_is_product_available') }}"
+        data_type: boolean
+      - name: scraped_date
+        description: "{{ doc('col_scraped_date') }}"
+        data_type: date
+        data_tests:
           - not_null
 
   - name: int_aldi
+    description: >
+      Aldi available products on the unified schema. Pack size is parsed from free text; Aldi exposes no dietary flags, unit price or category levels 3-4, so those are typed NULLs.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 1500
     columns:
       - name: id
-        tests:
-          - unique
+        description: "{{ doc('col_id') }}"
+        data_type: varchar
+        data_tests:
           - not_null
+          - unique
       - name: supermarket
-        tests:
+        description: "{{ doc('col_supermarket') }}"
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['tesco','aldi','dunnes','supervalu']
+      - name: title
+        description: "{{ doc('col_title') }}"
+        data_type: varchar
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: title_cleaned
+        description: "{{ doc('col_title_cleaned') }}"
+        data_type: varchar
+      - name: brand
+        description: "{{ doc('col_brand') }}"
+        data_type: varchar
+      - name: is_own_brand
+        description: "{{ doc('col_is_own_brand') }}"
+        data_type: boolean
+      - name: item_description
+        description: "{{ doc('col_item_description') }}"
+        data_type: varchar
+      - name: category_1
+        description: "{{ doc('col_category_1') }}"
+        data_type: varchar
+      - name: category_2
+        description: "{{ doc('col_category_2') }}"
+        data_type: varchar
+      - name: category_3
+        description: "{{ doc('col_category_3') }}"
+        data_type: varchar
+      - name: category_4
+        description: "{{ doc('col_category_4') }}"
+        data_type: varchar
+      - name: is_discount
+        description: "{{ doc('col_is_discount') }}"
+        data_type: boolean
+      - name: is_promotion
+        description: "{{ doc('col_is_promotion') }}"
+        data_type: boolean
+      - name: price
+        description: "{{ doc('col_price') }}"
+        data_type: double
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1000
+      - name: was_price
+        description: "{{ doc('col_was_price') }}"
+        data_type: double
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1000
+      - name: selling_size
+        description: "{{ doc('col_selling_size') }}"
+        data_type: double
+      - name: unit
+        description: "{{ doc('col_unit') }}"
+        data_type: varchar
+      - name: unit_qty_normalised
+        description: "{{ doc('col_unit_qty_normalised') }}"
+        data_type: double
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+      - name: unit_normalised
+        description: "{{ doc('col_unit_normalised') }}"
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['kg','l','m','each']
+              config:
+                severity: warn
+      - name: unit_price
+        description: "{{ doc('col_unit_price') }}"
+        data_type: double
+      - name: price_per_unit_normalised
+        description: "{{ doc('col_price_per_unit_normalised') }}"
+        data_type: double
+      - name: promotion_description
+        description: "{{ doc('col_promotion_description') }}"
+        data_type: varchar
+      - name: promotion_type
+        description: "{{ doc('col_promotion_type') }}"
+        data_type: varchar
+      - name: promotion_qualities
+        description: "{{ doc('col_promotion_qualities') }}"
+        data_type: varchar[]
+      - name: promotion_start_date
+        description: "{{ doc('col_promotion_start_date') }}"
+        data_type: date
+      - name: promotion_end_date
+        description: "{{ doc('col_promotion_end_date') }}"
+        data_type: date
+      - name: discount_start_date
+        description: "{{ doc('col_discount_start_date') }}"
+        data_type: date
+      - name: discount_end_date
+        description: "{{ doc('col_discount_end_date') }}"
+        data_type: date
+      - name: ingredients
+        description: "{{ doc('col_ingredients') }}"
+        data_type: varchar
+      - name: contains_allergens
+        description: "{{ doc('col_contains_allergens') }}"
+        data_type: varchar[]
+      - name: may_contain_allergens
+        description: "{{ doc('col_may_contain_allergens') }}"
+        data_type: varchar[]
+      - name: dietary_flags
+        description: "{{ doc('col_dietary_flags') }}"
+        data_type: varchar[]
+      - name: is_vegan
+        description: "{{ doc('col_is_vegan') }}"
+        data_type: boolean
+      - name: is_vegetarian
+        description: "{{ doc('col_is_vegetarian') }}"
+        data_type: boolean
+      - name: is_gluten_free
+        description: "{{ doc('col_is_gluten_free') }}"
+        data_type: boolean
+      - name: is_organic
+        description: "{{ doc('col_is_organic') }}"
+        data_type: boolean
+      - name: is_low_fat
+        description: "{{ doc('col_is_low_fat') }}"
+        data_type: boolean
+      - name: is_kosher
+        description: "{{ doc('col_is_kosher') }}"
+        data_type: boolean
+      - name: is_halal
+        description: "{{ doc('col_is_halal') }}"
+        data_type: boolean
+      - name: is_dairy_free
+        description: "{{ doc('col_is_dairy_free') }}"
+        data_type: boolean
+      - name: is_sugar_free
+        description: "{{ doc('col_is_sugar_free') }}"
+        data_type: boolean
+      - name: has_no_added_sugar
+        description: "{{ doc('col_has_no_added_sugar') }}"
+        data_type: boolean
+      - name: is_diabetic_friendly
+        description: "{{ doc('col_is_diabetic_friendly') }}"
+        data_type: boolean
+      - name: image_url
+        description: "{{ doc('col_image_url') }}"
+        data_type: varchar
+      - name: is_product_available
+        description: "{{ doc('col_is_product_available') }}"
+        data_type: boolean
+      - name: scraped_date
+        description: "{{ doc('col_scraped_date') }}"
+        data_type: date
+        data_tests:
           - not_null
 
   - name: int_dunnes
+    description: >
+      Dunnes products on the unified schema. Ingredients, allergens and lifestyle tags are parsed out of the description HTML; dietary flags combine the boolean attributes with those tags.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 3000
     columns:
       - name: id
-        tests:
-          - unique
+        description: "{{ doc('col_id') }}"
+        data_type: varchar
+        data_tests:
           - not_null
+          - unique
       - name: supermarket
-        tests:
+        description: "{{ doc('col_supermarket') }}"
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['tesco','aldi','dunnes','supervalu']
+      - name: title
+        description: "{{ doc('col_title') }}"
+        data_type: varchar
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: title_cleaned
+        description: "{{ doc('col_title_cleaned') }}"
+        data_type: varchar
+      - name: brand
+        description: "{{ doc('col_brand') }}"
+        data_type: varchar
+      - name: is_own_brand
+        description: "{{ doc('col_is_own_brand') }}"
+        data_type: boolean
+      - name: item_description
+        description: "{{ doc('col_item_description') }}"
+        data_type: varchar
+      - name: category_1
+        description: "{{ doc('col_category_1') }}"
+        data_type: varchar
+      - name: category_2
+        description: "{{ doc('col_category_2') }}"
+        data_type: varchar
+      - name: category_3
+        description: "{{ doc('col_category_3') }}"
+        data_type: varchar
+      - name: category_4
+        description: "{{ doc('col_category_4') }}"
+        data_type: varchar
+      - name: is_discount
+        description: "{{ doc('col_is_discount') }}"
+        data_type: boolean
+      - name: is_promotion
+        description: "{{ doc('col_is_promotion') }}"
+        data_type: boolean
+      - name: price
+        description: "{{ doc('col_price') }}"
+        data_type: double
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1000
+      - name: was_price
+        description: "{{ doc('col_was_price') }}"
+        data_type: double
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1000
+      - name: selling_size
+        description: "{{ doc('col_selling_size') }}"
+        data_type: double
+      - name: unit
+        description: "{{ doc('col_unit') }}"
+        data_type: varchar
+      - name: unit_qty_normalised
+        description: "{{ doc('col_unit_qty_normalised') }}"
+        data_type: double
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+      - name: unit_normalised
+        description: "{{ doc('col_unit_normalised') }}"
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['kg','l','m','each']
+              config:
+                severity: warn
+      - name: unit_price
+        description: "{{ doc('col_unit_price') }}"
+        data_type: double
+      - name: price_per_unit_normalised
+        description: "{{ doc('col_price_per_unit_normalised') }}"
+        data_type: double
+      - name: promotion_description
+        description: "{{ doc('col_promotion_description') }}"
+        data_type: varchar
+      - name: promotion_type
+        description: "{{ doc('col_promotion_type') }}"
+        data_type: varchar
+      - name: promotion_qualities
+        description: "{{ doc('col_promotion_qualities') }}"
+        data_type: varchar[]
+      - name: promotion_start_date
+        description: "{{ doc('col_promotion_start_date') }}"
+        data_type: date
+      - name: promotion_end_date
+        description: "{{ doc('col_promotion_end_date') }}"
+        data_type: date
+      - name: discount_start_date
+        description: "{{ doc('col_discount_start_date') }}"
+        data_type: date
+      - name: discount_end_date
+        description: "{{ doc('col_discount_end_date') }}"
+        data_type: date
+      - name: ingredients
+        description: "{{ doc('col_ingredients') }}"
+        data_type: varchar
+      - name: contains_allergens
+        description: "{{ doc('col_contains_allergens') }}"
+        data_type: varchar[]
+      - name: may_contain_allergens
+        description: "{{ doc('col_may_contain_allergens') }}"
+        data_type: varchar[]
+      - name: dietary_flags
+        description: "{{ doc('col_dietary_flags') }}"
+        data_type: varchar[]
+      - name: is_vegan
+        description: "{{ doc('col_is_vegan') }}"
+        data_type: boolean
+      - name: is_vegetarian
+        description: "{{ doc('col_is_vegetarian') }}"
+        data_type: boolean
+      - name: is_gluten_free
+        description: "{{ doc('col_is_gluten_free') }}"
+        data_type: boolean
+      - name: is_organic
+        description: "{{ doc('col_is_organic') }}"
+        data_type: boolean
+      - name: is_low_fat
+        description: "{{ doc('col_is_low_fat') }}"
+        data_type: boolean
+      - name: is_kosher
+        description: "{{ doc('col_is_kosher') }}"
+        data_type: boolean
+      - name: is_halal
+        description: "{{ doc('col_is_halal') }}"
+        data_type: boolean
+      - name: is_dairy_free
+        description: "{{ doc('col_is_dairy_free') }}"
+        data_type: boolean
+      - name: is_sugar_free
+        description: "{{ doc('col_is_sugar_free') }}"
+        data_type: boolean
+      - name: has_no_added_sugar
+        description: "{{ doc('col_has_no_added_sugar') }}"
+        data_type: boolean
+      - name: is_diabetic_friendly
+        description: "{{ doc('col_is_diabetic_friendly') }}"
+        data_type: boolean
+      - name: image_url
+        description: "{{ doc('col_image_url') }}"
+        data_type: varchar
+      - name: is_product_available
+        description: "{{ doc('col_is_product_available') }}"
+        data_type: boolean
+      - name: scraped_date
+        description: "{{ doc('col_scraped_date') }}"
+        data_type: date
+        data_tests:
           - not_null
 
   - name: int_supervalu
+    description: >
+      SuperValu products on the unified schema, the reference for the column set. Dietary flags OR together attribute, lifestyle, dietary and category-path signals. Materialised as a table because of the heavy JSON handling.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 5000
     columns:
       - name: id
-        tests:
+        description: "{{ doc('col_id') }}"
+        data_type: varchar
+        data_tests:
+          - not_null
           - unique
-          - not_null
       - name: supermarket
-        tests:
+        description: "{{ doc('col_supermarket') }}"
+        data_type: varchar
+        data_tests:
           - not_null
+          - accepted_values:
+              arguments:
+                values: ['tesco','aldi','dunnes','supervalu']
+      - name: title
+        description: "{{ doc('col_title') }}"
+        data_type: varchar
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: title_cleaned
+        description: "{{ doc('col_title_cleaned') }}"
+        data_type: varchar
+      - name: brand
+        description: "{{ doc('col_brand') }}"
+        data_type: varchar
+      - name: is_own_brand
+        description: "{{ doc('col_is_own_brand') }}"
+        data_type: boolean
+      - name: item_description
+        description: "{{ doc('col_item_description') }}"
+        data_type: varchar
+      - name: category_1
+        description: "{{ doc('col_category_1') }}"
+        data_type: varchar
+      - name: category_2
+        description: "{{ doc('col_category_2') }}"
+        data_type: varchar
+      - name: category_3
+        description: "{{ doc('col_category_3') }}"
+        data_type: varchar
+      - name: category_4
+        description: "{{ doc('col_category_4') }}"
+        data_type: varchar
+      - name: is_discount
+        description: "{{ doc('col_is_discount') }}"
+        data_type: boolean
+      - name: is_promotion
+        description: "{{ doc('col_is_promotion') }}"
+        data_type: boolean
+      - name: price
+        description: "{{ doc('col_price') }}"
+        data_type: double
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1000
+      - name: was_price
+        description: "{{ doc('col_was_price') }}"
+        data_type: double
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1000
+      - name: selling_size
+        description: "{{ doc('col_selling_size') }}"
+        data_type: double
+      - name: unit
+        description: "{{ doc('col_unit') }}"
+        data_type: varchar
+      - name: unit_qty_normalised
+        description: "{{ doc('col_unit_qty_normalised') }}"
+        data_type: double
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+      - name: unit_normalised
+        description: "{{ doc('col_unit_normalised') }}"
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['kg','l','m','each']
+              config:
+                severity: warn
+      - name: unit_price
+        description: "{{ doc('col_unit_price') }}"
+        data_type: double
+      - name: price_per_unit_normalised
+        description: "{{ doc('col_price_per_unit_normalised') }}"
+        data_type: double
+      - name: promotion_description
+        description: "{{ doc('col_promotion_description') }}"
+        data_type: varchar
+      - name: promotion_type
+        description: "{{ doc('col_promotion_type') }}"
+        data_type: varchar
+      - name: promotion_qualities
+        description: "{{ doc('col_promotion_qualities') }}"
+        data_type: varchar[]
+      - name: promotion_start_date
+        description: "{{ doc('col_promotion_start_date') }}"
+        data_type: date
+      - name: promotion_end_date
+        description: "{{ doc('col_promotion_end_date') }}"
+        data_type: date
+      - name: discount_start_date
+        description: "{{ doc('col_discount_start_date') }}"
+        data_type: date
+      - name: discount_end_date
+        description: "{{ doc('col_discount_end_date') }}"
+        data_type: date
+      - name: ingredients
+        description: "{{ doc('col_ingredients') }}"
+        data_type: varchar
+      - name: contains_allergens
+        description: "{{ doc('col_contains_allergens') }}"
+        data_type: varchar[]
+      - name: may_contain_allergens
+        description: "{{ doc('col_may_contain_allergens') }}"
+        data_type: varchar[]
+      - name: dietary_flags
+        description: "{{ doc('col_dietary_flags') }}"
+        data_type: varchar[]
+      - name: is_vegan
+        description: "{{ doc('col_is_vegan') }}"
+        data_type: boolean
+      - name: is_vegetarian
+        description: "{{ doc('col_is_vegetarian') }}"
+        data_type: boolean
+      - name: is_gluten_free
+        description: "{{ doc('col_is_gluten_free') }}"
+        data_type: boolean
+      - name: is_organic
+        description: "{{ doc('col_is_organic') }}"
+        data_type: boolean
+      - name: is_low_fat
+        description: "{{ doc('col_is_low_fat') }}"
+        data_type: boolean
+      - name: is_kosher
+        description: "{{ doc('col_is_kosher') }}"
+        data_type: boolean
+      - name: is_halal
+        description: "{{ doc('col_is_halal') }}"
+        data_type: boolean
+      - name: is_dairy_free
+        description: "{{ doc('col_is_dairy_free') }}"
+        data_type: boolean
+      - name: is_sugar_free
+        description: "{{ doc('col_is_sugar_free') }}"
+        data_type: boolean
+      - name: has_no_added_sugar
+        description: "{{ doc('col_has_no_added_sugar') }}"
+        data_type: boolean
+      - name: is_diabetic_friendly
+        description: "{{ doc('col_is_diabetic_friendly') }}"
+        data_type: boolean
+      - name: image_url
+        description: "{{ doc('col_image_url') }}"
+        data_type: varchar
+      - name: is_product_available
+        description: "{{ doc('col_is_product_available') }}"
+        data_type: boolean
+      - name: scraped_date
+        description: "{{ doc('col_scraped_date') }}"
+        data_type: date
+        data_tests:
+          - not_null
+
+  - name: int_all_supermarket_products
+    description: >
+      Slim id / title / title_cleaned extract of fct_product_listings (rows with a title only),
+      written to Parquet under the parquet_output_prefix var for the embedding pipeline. Name predates
+      the marts layer; it is an output, not an intermediate.
+    columns:
+      - name: id
+        description: "{{ doc('col_id') }}"
+      - name: supermarket
+        description: "{{ doc('col_supermarket') }}"
+      - name: title
+        description: "{{ doc('col_title') }}"
+      - name: title_cleaned
+        description: "{{ doc('col_title_cleaned') }}"
+
+  - name: int_product_title_embeddings
+    description: >
+      Title embeddings precomputed by ml/embeddings.py and read back from S3 (path keyed by the
+      embedding_model var). Not computed in dbt.
+    columns:
+      - name: id
+        description: "{{ doc('col_id') }}"
+      - name: supermarket
+        description: "{{ doc('col_supermarket') }}"
+      - name: title
+        description: "{{ doc('col_title') }}"
+      - name: title_embedding
+        description: Title embedding vector (640 dimensions for the default model).
+      - name: embedding_model
+        description: Slug of the model that produced the embedding.
+      - name: embedded_at
+        description: Timestamp the embedding was computed.

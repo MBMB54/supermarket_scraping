@@ -1,15 +1,7 @@
-# Name your project! Project names should contain only lowercase characters
-# and underscores. A good package name should reflect your organization's
-# name or the intended use of these models
 name: 'dbt_ie_supermarket_analytics'
 version: '1.0.0'
-
-# This setting configures which "profile" dbt uses for this project.
 profile: 'dbt_ie_supermarket_analytics'
 
-# These configurations specify where dbt should look for different types of files.
-# The `model-paths` config, for example, states that models in this project can be
-# found in the "models/" directory. You probably won't need to change these!
 model-paths: ["models"]
 analysis-paths: ["analyses"]
 test-paths: ["tests"]
@@ -17,24 +9,29 @@ seed-paths: ["seeds"]
 macro-paths: ["macros"]
 snapshot-paths: ["snapshots"]
 
-clean-targets:         # directories to be removed by `dbt clean`
+clean-targets:
   - "target"
   - "dbt_packages"
 
+vars:
+  # run_date (YYYY-MM-DD) selects the raw partition; pass it via --vars. When omitted the sources
+  # fall back to today's UTC date (see models/staging/raw_s3.yml).
+  # S3 prefix (or local dir) that dbt WRITES Parquet outputs to: today only
+  # int_all_supermarket_products -> {prefix}/all_supermarket_products.parquet, which
+  # ml/embeddings.py reads (it hardcodes processed/all_supermarket_products.parquet, not this var).
+  # Override with a local dir when testing so production S3 is not touched.
+  parquet_output_prefix: "s3://ie-supermarket-data/processed"
+  # Prefix dbt READS embeddings from ({prefix}/embeddings/{embedding_model}/...), written by ml/embeddings.py.
+  embeddings_input_prefix: "s3://ie-supermarket-data/processed"
 
-# Configuring models
-# Full documentation: https://docs.getdbt.com/docs/configuring-models
-
-# In this example config, we tell dbt to build all models in the example/
-# directory as views. These settings can be overridden in the individual model
-# files using the `{{ config(...) }}` macro.
 models:
   dbt_ie_supermarket_analytics:
-    # +static_analysis: strict
-    # Config indicated by + and applies to all files under models/example/
-    example:
+    staging:
       +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table
 
 flags:
   require_generic_test_arguments_property: true
-

@@ -1,0 +1,69 @@
+version: 2
+
+seeds:
+  - name: supervalu_taxonomy
+    description: Target SuperValu product taxonomy (levels 1-3) from the taxonomy consolidation project.
+    columns:
+      - name: taxonomy_1
+        description: Top taxonomy level.
+        data_tests: [not_null]
+      - name: taxonomy_2
+        description: Second taxonomy level.
+      - name: taxonomy_3
+        description: Third taxonomy level.
+      - name: description
+        description: Optional note on what belongs in the node.
+
+  - name: supervalu_category_map
+    description: Maps each SuperValu retailer category path (levels 1-4) to a taxonomy node, or marks it for dissolution.
+    columns:
+      - name: category_1
+        description: Retailer category level 1.
+      - name: category_2
+        description: Retailer category level 2.
+      - name: category_3
+        description: Retailer category level 3.
+      - name: category_4
+        description: Retailer category level 4.
+      - name: taxonomy_1
+        description: Mapped taxonomy level 1.
+      - name: taxonomy_2
+        description: Mapped taxonomy level 2.
+      - name: taxonomy_3
+        description: Mapped taxonomy level 3.
+      - name: disposition
+        description: How the category is handled (map, dissolve, ...).
+      - name: note
+        description: Free-text rationale.
+
+  - name: supervalu_product_overrides
+    description: Product-level taxonomy overrides from LLM classification and manual review.
+    columns:
+      - name: id
+        description: SuperValu product id.
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('int_supervalu')
+                field: id
+              config:
+                severity: warn
+      - name: taxonomy_1
+        description: Override taxonomy level 1.
+      - name: taxonomy_2
+        description: Override taxonomy level 2.
+      - name: taxonomy_3
+        description: Override taxonomy level 3.
+      - name: source
+        description: Origin of the override (llm, manual).
+      - name: confidence
+        description: Classifier confidence between 0 and 1.
+        data_tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: reviewed_at
+        description: When a human reviewed the override; NULL if unreviewed.

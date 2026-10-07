@@ -1,11 +1,9 @@
-{{ config(materialized='view') }}
-
 WITH source AS (
     SELECT * FROM {{ source('external_source', 'aldi') }}
 )
 
 SELECT
-    data.sku as id,
+    data.sku AS id,
     'aldi' AS supermarket,
     data.name AS title,
     data.brandName AS brand,
@@ -17,14 +15,13 @@ SELECT
     data.OnSaleDate AS sale_date,
     data.categories[1].name AS category_1,
     data.categories[2].name AS category_2,
-    NULL AS category_3,
-    NULL AS category_4,
+    CAST(NULL AS VARCHAR) AS category_3,
+    CAST(NULL AS VARCHAR) AS category_4,
     data.description AS description,
     data.ingredients AS ingredients,
     data.nutritionalClaims AS nutritional_claims,
     data.assets[1].url AS image_url_raw,
-    CASE WHEN data.notForSaleReason == 'This product is currently not available.' THEN
-        FALSE ELSE TRUE END AS is_product_available,
-    CASE WHEN data.price.wasPriceDisplay IS NOT NULL THEN TRUE ELSE FALSE END AS is_sale,
-    CURRENT_DATE AS scraped_date
+    data.notForSaleReason IS DISTINCT FROM 'This product is currently not available.' AS is_product_available,
+    data.price.wasPriceDisplay IS NOT NULL AS is_sale,
+    {{ run_date_sql() }} AS scraped_date
 FROM source
