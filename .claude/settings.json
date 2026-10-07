@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "read -r input; f=$(echo \"$input\" | jq -r '.tool_input.file_path'); echo \"$f\" | grep -q '\\.py$' && uv run ruff format \"$f\" 2>/dev/null || true",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
