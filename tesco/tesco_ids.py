@@ -1,23 +1,28 @@
 import asyncio
-import datetime
-import json
 import logging
 import math
 import os
 import random
 import re
+import sys
 from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
 
-import boto3
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
 import polars as pl
-from botocore.exceptions import ClientError
+from patchright.async_api import TimeoutError as PlaywrightTimeoutError
 from patchright.async_api import async_playwright
 
-logging.basicConfig(level=logging.INFO)
+from scraper_common.config import setup_logging
+from scraper_common.ids import run_ids_job
+from scraper_common.storage import Storage
+
 logger = logging.getLogger("tesco_ids")
 
-BUCKET = "ie-supermarket-data"
 RETAILER = "tesco"
+PRODUCT_ID_RE = re.compile(r"/products/(\d{9})")
 CATEGORIES = [
     "fresh-food",
     "bakery",
@@ -76,96 +81,41 @@ def _progress_key(folder_date: str) -> str:
     return f"raw/{RETAILER}/ids/date={folder_date}/progress.json"
 
 
-def load_progress(folder_date: str) -> ScrapeProgress:
-    s3 = boto3.client("s3")
-    try:
-        obj = s3.get_object(Bucket=BUCKET, Key=_progress_key(folder_date))
-        data = json.loads(obj["Body"].read())
-        return ScrapeProgress(
-            completed_categories=data.get("completed_categories", []),
-            current_category=data.get("current_category"),
-            current_page=data.get("current_page", 1),
-            current_category_hrefs=data.get("current_category_hrefs", 0),
-            hrefs=data.get("hrefs", []),
-        )
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "NoSuchKey":
-            return ScrapeProgress()
-        raise
+def load_progress(storage: Storage, folder_date: str) -> ScrapeProgress:
+    data = storage.get_json(_progress_key(folder_date))
+    return ScrapeProgress(**data) if data else ScrapeProgress()
 
 
-def save_progress(progress: ScrapeProgress, folder_date: str) -> None:
-    s3 = boto3.client("s3")
-    s3.put_object(
-        Bucket=BUCKET,
-        Key=_progress_key(folder_date),
-        Body=json.dumps(asdict(progress)),
-        ContentType="application/json",
-    )
+def save_progress(storage: Storage, progress: ScrapeProgress, folder_date: str) -> None:
+    storage.put_json(_progress_key(folder_date), asdict(progress))
 
 
-def delete_progress(folder_date: str) -> None:
-    s3 = boto3.client("s3")
-    try:
-        s3.delete_object(Bucket=BUCKET, Key=_progress_key(folder_date))
-    except Exception:
-        pass
+def hrefs_to_df(hrefs: list) -> pl.DataFrame:
+    ids = {m.group(1) for h in hrefs if (m := PRODUCT_ID_RE.search(h))}
+    return pl.DataFrame({"id": sorted(ids)}, schema={"id": pl.String})
 
 
-def _already_ran_today(folder_date: str) -> bool:
-    s3 = boto3.client("s3")
-    resp = s3.list_objects_v2(
-        Bucket=BUCKET,
-        Prefix=f"raw/{RETAILER}/ids/date={folder_date}/tesco_product_ids",
-    )
-    return resp.get("KeyCount", 0) > 0
-
-
-def upload_ids(hrefs: list, folder_date: str, timestamp: str) -> str:
-    ids = list(
-        {re.search(r"/products/(\d{9})", h).group(1) for h in hrefs if re.search(r"/products/(\d{9})", h)}
-    )
-    if not ids:
-        logger.error("0 IDs extracted from hrefs — skipping upload to avoid overwriting latest/")
-        return ""
-    now = datetime.datetime.now(tz=datetime.UTC)
-    s3_uri = f"s3://{BUCKET}/raw/{RETAILER}/ids/date={folder_date}/tesco_product_ids_{timestamp}.parquet"
-
-    df = pl.DataFrame({"id": ids}).with_columns(
-        pl.lit(now).alias("scraped_at"),
-        pl.lit(RETAILER).alias("retailer"),
-    )
-    df.write_parquet(s3_uri, compression="snappy", storage_options={"aws_region": "eu-west-1"})
-    logger.info(f"Uploaded {len(ids)} product IDs to {s3_uri}")
-
-    latest_uri = f"s3://{BUCKET}/raw/{RETAILER}/ids/latest/tesco_product_ids.parquet"
-    df.write_parquet(latest_uri, compression="snappy", storage_options={"aws_region": "eu-west-1"})
-    logger.info(f"Updated latest IDs at {latest_uri}")
-
-    return s3_uri
-
-
-async def extract_page_hrefs(page) -> list:
+async def extract_page_hrefs(page, storage: Storage) -> list:
     try:
         await page.locator("a[href*='/products/']").first.wait_for()
-    except Exception:
-        title = await page.title()
-        logger.error(f"Timed out waiting for product links. Title: '{title}'")
-        try:
-            screenshot_key = f"raw/tesco/debug/extract_page_hrefs_error_{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d_%H%M%S')}.png"
-            screenshot_bytes = await page.screenshot()
-            boto3.client("s3").put_object(Bucket=BUCKET, Key=screenshot_key, Body=screenshot_bytes, ContentType="image/png")
-            logger.error(f"Screenshot: s3://{BUCKET}/{screenshot_key}")
-        except Exception as upload_err:
-            logger.error(f"Failed to upload screenshot: {upload_err}")
+    except PlaywrightTimeoutError:
+        logger.error(f"Timed out waiting for product links. Title: '{await page.title()}'")
+        key = f"raw/{RETAILER}/debug/extract_page_hrefs_error_{datetime.now(tz=UTC):%Y%m%d_%H%M%S}.png"
+        storage.put_bytes(key, await page.screenshot(), "image/png")
+        logger.error(f"Screenshot: {storage.uri(key)}")
         raise
     return await page.evaluate(
         "() => [...new Set([...document.querySelectorAll('a[href*=\"/products/\"]')].map(el => el.href))]"
     )
 
 
-async def scrape_categories(folder_date: str, categories: list = CATEGORIES, page_limit: int | None = None) -> list:
-    progress = load_progress(folder_date)
+async def scrape_categories(
+    storage: Storage,
+    folder_date: str,
+    categories: list = CATEGORIES,
+    page_limit: int | None = None,
+) -> list:
+    progress = load_progress(storage, folder_date)
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
@@ -202,32 +152,37 @@ async def scrape_categories(folder_date: str, categories: list = CATEGORIES, pag
                     await page.get_by_text("Accept all").click(timeout=5000)
                     await asyncio.sleep(1)
                     cookies_accepted = True
-                except Exception:
-                    pass
+                except PlaywrightTimeoutError:
+                    logger.info("No cookie banner")
 
-            # Wait for product links before reading pagination — ensures React has rendered
-            hrefs = await extract_page_hrefs(page)
+            hrefs = await extract_page_hrefs(page, storage)
             pagination_string = await page.get_by_test_id("pagination-result-count").text_content()
             total_products = int(re.findall(r"\d+", pagination_string.replace(",", ""))[-1])
             max_pages = math.ceil(total_products / 48)
             progress.add_hrefs(hrefs, start_page)
-            save_progress(progress, folder_date)
-            logger.info(f"{category} - Page {start_page}/{max_pages} - Total hrefs: {len(progress.hrefs)}")
+            save_progress(storage, progress, folder_date)
+            logger.info(
+                f"{category} - Page {start_page}/{max_pages} - Total hrefs: {len(progress.hrefs)}"
+            )
 
-            for page_num in range(start_page + 1, (min(max_pages, page_limit) if page_limit else max_pages) + 1):
+            for page_num in range(
+                start_page + 1, (min(max_pages, page_limit) if page_limit else max_pages) + 1
+            ):
                 await asyncio.sleep(random.uniform(2, 5))
                 await page.goto(
                     f"https://www.tesco.ie/groceries/en-IE/shop/{category}/all?sortBy=relevance&page={page_num}&count=48#top",
                     timeout=0,
                     wait_until="load",
                 )
-                hrefs = await extract_page_hrefs(page)
+                hrefs = await extract_page_hrefs(page, storage)
                 progress.add_hrefs(hrefs, page_num)
-                save_progress(progress, folder_date)
-                logger.info(f"{category} - Page {page_num}/{max_pages} - Total hrefs: {len(progress.hrefs)}")
+                save_progress(storage, progress, folder_date)
+                logger.info(
+                    f"{category} - Page {page_num}/{max_pages} - Total hrefs: {len(progress.hrefs)}"
+                )
 
             progress.complete_category()
-            save_progress(progress, folder_date)
+            save_progress(storage, progress, folder_date)
             await asyncio.sleep(random.uniform(5, 10))
 
         await browser.close()
@@ -235,22 +190,26 @@ async def scrape_categories(folder_date: str, categories: list = CATEGORIES, pag
     return progress.hrefs
 
 
-if __name__ == "__main__":
-    logger.info(f"TEST_MODE={os.environ.get('TEST_MODE')!r}")
-
-    now = datetime.datetime.now(tz=datetime.UTC)
-    folder_date = now.strftime("%Y-%m-%d")
-    timestamp = now.strftime("%Y%m%d_%H%M%S")
-
+def scrape(storage: Storage) -> pl.DataFrame:
+    folder_date = f"{datetime.now(tz=UTC):%Y-%m-%d}"
     if os.environ.get("TEST_MODE"):
-        # Scrape one page of one category to validate the full pipeline
-        folder_date = f"test-{folder_date}"
-        hrefs = asyncio.run(scrape_categories(folder_date, categories=["fresh-food"], page_limit=5))
-        upload_ids(hrefs, folder_date, timestamp)
-        delete_progress(folder_date)
-    elif _already_ran_today(folder_date):
-        logger.info("IDs already scraped today — skipping")
+        hrefs = asyncio.run(
+            scrape_categories(storage, f"test-{folder_date}", ["fresh-food"], page_limit=5)
+        )
+        storage.delete(_progress_key(f"test-{folder_date}"))
     else:
-        hrefs = asyncio.run(scrape_categories(folder_date))
-        upload_ids(hrefs, folder_date, timestamp)
-        delete_progress(folder_date)
+        hrefs = asyncio.run(scrape_categories(storage, folder_date))
+        storage.delete(_progress_key(folder_date))
+    return hrefs_to_df(hrefs)
+
+
+def main() -> int:
+    setup_logging("tesco_ids")
+    storage = Storage.from_env()
+    if os.environ.get("TEST_MODE") and not storage.output_dir:
+        raise SystemExit("TEST_MODE requires OUTPUT_DIR so ids/latest is not overwritten")
+    return run_ids_job(RETAILER, lambda: scrape(storage), storage, min_age_hours=20, id_column="id")
+
+
+if __name__ == "__main__":
+    sys.exit(main())

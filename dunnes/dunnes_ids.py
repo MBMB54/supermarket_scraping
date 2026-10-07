@@ -1,84 +1,37 @@
-import datetime
-import logging
 import re
+import sys
+from pathlib import Path
 
-import boto3
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
 import polars as pl
 from curl_cffi.requests import Session
-from tenacity import retry, retry_if_result, stop_after_attempt, wait_exponential
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("dunnes_ids")
+from scraper_common.config import setup_logging
+from scraper_common.http import retry_until
+from scraper_common.ids import run_ids_job
+from scraper_common.storage import Storage
 
-BUCKET = "ie-supermarket-data"
 RETAILER = "dunnes"
+REFRESH_HOURS = 7 * 24
+PRODUCT_ID_RE = re.compile(r"/product/[^<]+-id-(\d+)")
 
 
-def _on_retry_exhausted(retry_state):
-    logger.error(f"0 IDs scraped after {retry_state.attempt_number} attempts — sitemap likely blocked. Leaving latest/ unchanged.")
-    return []
-
-
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=10, max=60),
-    retry=retry_if_result(lambda x: not x),
-    retry_error_callback=_on_retry_exhausted,
-)
 def scrape_dunnes_product_ids() -> list[str]:
     with Session(impersonate="chrome136") as s:
         xml_text = s.get("https://www.dunnesstoresgrocery.com/sitemap.xml", timeout=30).text
-    return re.findall(r"/product/[^<]+-id-(\d+)", xml_text)
+    return PRODUCT_ID_RE.findall(xml_text)
 
 
-def write_to_parquet_and_upload(records: list[dict]) -> str:
-    now = datetime.datetime.now(tz=datetime.UTC)
-    folder_date = now.strftime("%Y-%m-%d")
-    timestamp = now.strftime("%Y%m%d_%H%M%S")
-    filename = f"{RETAILER}_product_ids_{timestamp}.parquet"
-    s3_uri = f"s3://{BUCKET}/raw/{RETAILER}/ids/date={folder_date}/{filename}"
-
-    df = pl.DataFrame({"product_id": records}).with_columns(
-        pl.lit(now).alias("scraped_at"),
-        pl.lit(RETAILER).alias("retailer"),
-    )
-
-    df.write_parquet(
-        s3_uri,
-        compression="snappy",
-        storage_options={
-            "aws_region": "eu-west-1",
-        },
-    )
-
-    logger.info(f"Uploaded {len(records)} product IDs to {s3_uri}")
-
-    latest_uri = f"s3://{BUCKET}/raw/{RETAILER}/ids/latest/dunnes_product_ids.parquet"
-    df.write_parquet(latest_uri, compression="snappy", storage_options={"aws_region": "eu-west-1"})
-    logger.info(f"Updated latest IDs at {latest_uri}")
-
-    return s3_uri
+def scrape() -> pl.DataFrame:
+    ids = retry_until(scrape_dunnes_product_ids, wait=10)
+    return pl.DataFrame({"product_id": ids}, schema={"product_id": pl.String})
 
 
-REFRESH_DAYS = 7
-
-
-def _recently_scraped() -> bool:
-    s3 = boto3.client("s3")
-    try:
-        obj = s3.head_object(Bucket=BUCKET, Key=f"raw/{RETAILER}/ids/latest/{RETAILER}_product_ids.parquet")
-        age = datetime.datetime.now(tz=datetime.UTC) - obj["LastModified"]
-        return age.days < REFRESH_DAYS
-    except s3.exceptions.ClientError:
-        return False
+def main() -> int:
+    setup_logging(RETAILER)
+    return run_ids_job(RETAILER, scrape, Storage.from_env(), min_age_hours=REFRESH_HOURS)
 
 
 if __name__ == "__main__":
-    if _recently_scraped():
-        logger.info(f"IDs scraped within last {REFRESH_DAYS} days — skipping")
-    else:
-        records = scrape_dunnes_product_ids()
-        if not records:
-            logger.error("0 IDs scraped — sitemap likely blocked. Leaving latest/ unchanged.")
-        else:
-            write_to_parquet_and_upload(records)
+    sys.exit(main())

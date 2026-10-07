@@ -1,0 +1,19 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {"Sid": "ScraperData", "Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket", "s3:DeleteObject"],
+     "Resource": ["arn:aws:s3:::ie-supermarket-data", "arn:aws:s3:::ie-supermarket-data/*"]},
+    {"Sid": "Batch", "Effect": "Allow",
+     "Action": ["batch:Describe*", "batch:List*", "batch:SubmitJob", "batch:TerminateJob", "batch:CancelJob"], "Resource": "*"},
+    {"Sid": "Logs", "Effect": "Allow", "Action": ["logs:GetLogEvents", "logs:DescribeLogStreams", "logs:DescribeLogGroups", "logs:FilterLogEvents"], "Resource": "*"},
+    {"Sid": "Ecr", "Effect": "Allow", "Action": ["ecr:Describe*", "ecr:List*", "ecr:GetAuthorizationToken"], "Resource": "*"},
+    {"Sid": "LambdaInvoke", "Effect": "Allow", "Action": ["lambda:InvokeFunction", "lambda:GetFunction*", "lambda:UpdateFunctionCode"],
+     "Resource": ["arn:aws:lambda:eu-west-1:557690579730nction:supermarket_*"]},
+    {"Sid": "AlertStack", "Effect": "Allow",
+     "Action": ["cloudformation:*", "sns:*", "events:*"], "Resource": "*"},
+    {"Sid": "AlertStackLambdaAndRole", "Effect": "Allow",
+     "Action": ["lambda:*", "iam:CreateRole", "iam:DeleteRole", "iam:PutRolePolicy", "iam:DeleteRolePolicy",
+                "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:GetRole", "iam:PassRole", "iam:TagRole"],
+     "Resource": ["arn:aws:lambda:eu-west-1:557690579730nction:supermarket-*", "arn:aws:iam::557690579730ole/supermarket-scraper-alerts-*"]}
+  ]
+}

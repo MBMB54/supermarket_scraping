@@ -1,0 +1,16 @@
+# Build from the repo root:  docker build -f infra/dbt/Dockerfile.dbt -t ie-supermarket-dbt .
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 DBT_PROFILES_DIR=/app/infra/dbt DBT_SEND_ANONYMOUS_USAGE_STATS=False
+WORKDIR /app
+
+COPY infra/dbt/requirements.txt infra/dbt/requirements.txt
+RUN pip install --no-cache-dir -r infra/dbt/requirements.txt
+
+COPY dbt/ dbt/
+COPY infra/dbt/profiles.yml infra/dbt/run_dbt.py infra/dbt/
+
+# Pre-install the DuckDB extensions so the job does not need internet beyond S3
+RUN python -c "import duckdb; c=duckdb.connect(); [c.execute(f'INSTALL {e}') for e in ('httpfs','parquet','aws')]"
+
+CMD ["python", "infra/dbt/run_dbt.py"]

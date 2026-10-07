@@ -1,0 +1,13 @@
+dbt_ie_supermarket_analytics:
+  target: batch
+  outputs:
+    batch:
+      type: duckdb
+      path: "{{ env_var('DBT_DUCKDB_PATH', '/tmp/supermarket_data.duckdb') }}"
+      threads: 2
+      extensions: [httpfs, parquet, aws]
+      secrets:
+        - type: s3
+          provider: credential_chain
+      settings:
+        s3_region: eu-west-1

@@ -1,47 +1,72 @@
 import asyncio
-import datetime
-import gzip
 import json
-import logging
 import os
 import random
+import sys
+import time
 import uuid
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 import aiohttp
-import boto3
-import polars as pl
-from botocore.exceptions import ClientError
 
-logging.basicConfig(level=logging.INFO)
-logging.getLogger("boto3").setLevel(logging.WARNING)
-logging.getLogger("botocore").setLevel(logging.WARNING)
-handle = "tesco_api"
-logger = logging.getLogger(handle)
+from scraper_common.config import RunConfig, setup_logging
+from scraper_common.ids import read_ids
+from scraper_common.runner import run_scrape
+from scraper_common.storage import Storage
 
-with open("graphql_query.txt") as file:
-    TESCO_GRAPHQL_QUERY = file.read().rstrip()
+logger = setup_logging("tesco_api")
 
-BUCKET = "ie-supermarket-data"
-CONCURRENT_REQUESTS = 5
-DELAY_BETWEEN_BATCHES = 2
+TESCO_GRAPHQL_QUERY = (Path(__file__).parent / "graphql_query.txt").read_text().rstrip()
+
+RETAILER = "tesco"
+# Tesco/Akamai rate-limits xapi.tesco.com (see docs/tesco-429-incident.md): the measured knee is
+# ~2.5 req/s. Budget is an aggregate across ALL chunks; each container takes an equal share.
+TOTAL_REQ_PER_SEC = float(os.environ.get("TESCO_TOTAL_REQ_PER_SEC", "2.0"))
+CONCURRENT_REQUESTS = 2  # in-flight cap only; pacing is done by RequestPacer
+MAX_ATTEMPTS = int(os.environ.get("TESCO_MAX_ATTEMPTS", "8"))
+BACKOFF_BASE = 1.0
+BACKOFF_CAP = 60.0
+TIMEOUT = aiohttp.ClientTimeout(total=60, connect=10, sock_read=30)
 API_KEY = "TvOSZJHlEk0pjniDGQFAc9Q59WGAR4dA"
 USER_AGENT_STRINGS = [
     "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36",
     "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36",
 ]
 
-TESCO_IDS = (
-    pl.read_parquet(
-        f"s3://{BUCKET}/raw/tesco/ids/latest/tesco_product_ids.parquet",
-        storage_options={"aws_region": "eu-west-1"},
-    )
-    .get_column("id")
-    .cast(pl.String)
-    .unique()
-    .sort()
-    .to_list()
-)
-logger.info(f"Loaded {len(TESCO_IDS)} tesco product IDs from S3")
+
+class RequestPacer:
+    """Even request pacing (token-bucket with burst 1) plus a shared penalty on throttling."""
+
+    def __init__(self, rate: float):
+        self.interval = 1.0 / rate
+        self._next = 0.0
+        self._lock = asyncio.Lock()
+
+    async def wait(self) -> None:
+        async with self._lock:
+            now = time.monotonic()
+            slot = max(now, self._next)
+            self._next = slot + self.interval
+        if slot > now:
+            await asyncio.sleep(slot - now)
+
+    async def penalise(self, seconds: float) -> None:
+        """Push every future slot back so all workers cool off when Tesco throttles."""
+        async with self._lock:
+            self._next = max(self._next, time.monotonic() + seconds)
+
+
+class Throttled(Exception):
+    def __init__(self, label: str, retry_after: float | None = None):
+        super().__init__(label)
+        self.label = label
+        self.retry_after = retry_after
+
+
+class Unrecoverable(Exception):
+    pass
 
 
 def get_headers():
@@ -83,112 +108,120 @@ def build_payload(tpnc: str) -> list:
     ]
 
 
-def load_checkpoint(chunk_id: int, folder_date: str) -> set[str]:
-    s3 = boto3.client("s3")
-    key = f"raw/tesco/{folder_date}/checkpoints/chunk_{chunk_id}.json"
+def _retry_after(response: aiohttp.ClientResponse) -> float | None:
     try:
-        obj = s3.get_object(Bucket=BUCKET, Key=key)
-        data = json.loads(obj["Body"].read())
-        return set(data["processed_ids"])
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "NoSuchKey":
-            return set()
-        raise
+        return float(response.headers.get("Retry-After", ""))
+    except ValueError:
+        return None
 
 
-def save_checkpoint(chunk_id: int, folder_date: str, processed_ids: list[str]) -> None:
-    s3 = boto3.client("s3")
-    key = f"raw/tesco/{folder_date}/checkpoints/chunk_{chunk_id}.json"
-    s3.put_object(
-        Bucket=BUCKET,
-        Key=key,
-        Body=json.dumps({"processed_ids": processed_ids}),
-        ContentType="application/json",
-    )
+def parse_body(body) -> dict | None:
+    """Return the product dict, or raise Throttled / Unrecoverable for rejections.
+
+    Tesco sometimes rejects at the GraphQL layer with HTTP 200 and an `errors` body
+    (e.g. 'Too many requests') and no `data` key - that must never look like an empty product.
+    """
+    item = body[0] if isinstance(body, list) and body else body
+    if not isinstance(item, dict):
+        raise Throttled("GraphQL malformed response")
+    errors = item.get("errors")
+    if errors or "data" not in item or item["data"] is None:
+        text = json.dumps(errors)[:300] if errors else "missing data"
+        if "not-found" in text.lower() or '"status": 404' in text:
+            raise Unrecoverable(f"GraphQL error: {text}")
+        throttled = "too many" in text.lower() or "429" in text
+        raise Throttled("GraphQL 429" if throttled else f"GraphQL error: {text}")
+    product = item["data"].get("product")
+    if not product:
+        raise Unrecoverable("No product returned")
+    return product
 
 
-def delete_checkpoint(chunk_id: int, folder_date: str) -> None:
-    s3 = boto3.client("s3")
-    key = f"raw/tesco/{folder_date}/checkpoints/chunk_{chunk_id}.json"
-    try:
-        s3.delete_object(Bucket=BUCKET, Key=key)
-    except Exception:
-        pass
+async def _attempt(session: aiohttp.ClientSession, tpnc: str) -> dict:
+    async with session.post(
+        "https://xapi.tesco.com/", headers=get_headers(), json=build_payload(tpnc)
+    ) as response:
+        if response.status == 200:
+            return parse_body(await response.json(content_type=None))
+        if response.status == 429 or response.status >= 500:
+            raise Throttled(f"HTTP {response.status}", _retry_after(response))
+        raise Unrecoverable(f"HTTP {response.status}")
 
 
 async def fetch_product(
-    session: aiohttp.ClientSession, tpnc: str, semaphore: asyncio.Semaphore
-) -> dict:
-    async with semaphore:
-        await asyncio.sleep(0.5)
+    session: aiohttp.ClientSession,
+    tpnc: str,
+    pacer: RequestPacer,
+    stats: dict | None = None,
+) -> tuple[dict, bool]:
+    """Fetch one product. Returns (record, retryable_failure).
+
+    Throttle/transient failures are retried with Retry-After + exponential backoff + jitter.
+    If still failing, the record carries an error (never null/null) and retryable_failure is
+    True so the caller does not checkpoint it.
+    """
+    stats = stats if stats is not None else {}
+    last_error = "unknown"
+    for attempt in range(MAX_ATTEMPTS):
+        await pacer.wait()
+        stats["requests"] = stats.get("requests", 0) + 1
         try:
-            async with session.post(
-                "https://xapi.tesco.com/", headers=get_headers(), json=build_payload(tpnc)
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return {
-                        "tpnc": tpnc,
-                        "data": data[0].get("data", {}).get("product"),
-                        "error": None,
-                    }
-                return {"tpnc": tpnc, "data": None, "error": f"HTTP {response.status}"}
-        except Exception as e:
-            return {"tpnc": tpnc, "data": None, "error": str(e)}
+            product = await _attempt(session, tpnc)
+            return {"tpnc": tpnc, "data": product, "error": None}, False
+        except Unrecoverable as e:
+            return {"tpnc": tpnc, "data": None, "error": str(e)}, False
+        except Throttled as e:
+            last_error = e.label
+            retry_after = e.retry_after
+        except (aiohttp.ClientError, TimeoutError) as e:
+            last_error = f"{type(e).__name__}: {e}"[:200]
+            retry_after = None
+        stats["throttled"] = stats.get("throttled", 0) + 1
+        if attempt == MAX_ATTEMPTS - 1:
+            break
+        backoff = min(BACKOFF_CAP, BACKOFF_BASE * 2**attempt)
+        delay = max(retry_after or 0, backoff) + random.uniform(0, backoff / 2)
+        await pacer.penalise(delay)
+        stats["retries"] = stats.get("retries", 0) + 1
+        await asyncio.sleep(delay)
+    return {"tpnc": tpnc, "data": None, "error": last_error}, True
 
 
-async def fetch_all_products(
-    product_ids: list[str], chunk_id: int, folder_date: str, timestamp: str
-) -> tuple[int, int]:
-    semaphore = asyncio.Semaphore(CONCURRENT_REQUESTS)
-    s3 = boto3.client("s3")
-    async with aiohttp.ClientSession() as session:
-        tasks = [fetch_product(session, tpnc, semaphore) for tpnc in product_ids]
-        total_successes = total_failures = 0
-        processed_ids: list[str] = []
-        batch_size = 100
-        for batch_num, i in enumerate(range(0, len(tasks), batch_size)):
-            batch = tasks[i : i + batch_size]
-            batch_results = await asyncio.gather(*batch)
+async def scrape(cfg: RunConfig, storage: Storage) -> int:
+    ids = read_ids(storage, RETAILER, column="id")
+    pacer = RequestPacer(TOTAL_REQ_PER_SEC / cfg.total_chunks)
+    logger.info(f"Pacing at {TOTAL_REQ_PER_SEC / cfg.total_chunks:.3f} req/s for this chunk")
+    stats: dict = {}
+    retryable: set[str] = set()
+    connector = aiohttp.TCPConnector(limit=CONCURRENT_REQUESTS, ttl_dns_cache=300)
+    async with aiohttp.ClientSession(connector=connector, timeout=TIMEOUT) as session:
 
-            batch_filename = f"tesco_raw_{timestamp}_chunk{chunk_id}_batch{batch_num:04d}.jsonl.gz"
-            tmp_path = f"/tmp/{batch_filename}"
-            with gzip.open(tmp_path, "wt", encoding="utf-8") as f:
-                for result in batch_results:
-                    f.write(json.dumps(result) + "\n")
-            s3.upload_file(tmp_path, BUCKET, f"raw/tesco/{folder_date}/{batch_filename}")
+        async def fetch_one(tpnc: str) -> dict:
+            record, soft = await fetch_product(session, tpnc, pacer, stats)
+            if soft:
+                retryable.add(tpnc)
+            return record
 
-            total_successes += sum(1 for r in batch_results if r["data"])
-            total_failures += sum(1 for r in batch_results if r["error"])
-            processed_ids.extend(r["tpnc"] for r in batch_results)
-            save_checkpoint(chunk_id, folder_date, processed_ids)
-            logger.info(f"Processed {min(i + batch_size, len(tasks))}/{len(tasks)} products")
-            await asyncio.sleep(DELAY_BETWEEN_BATCHES)
-        return total_successes, total_failures
+        code = await run_scrape(
+            cfg,
+            storage,
+            ids,
+            fetch_one,
+            id_key="tpnc",
+            is_retryable=lambda record: record["tpnc"] in retryable,
+            concurrency=CONCURRENT_REQUESTS,
+            request_delay=0,
+            batch_delay=0,
+            fail_on_retryable=True,
+        )
+    logger.info(f"Request stats: {stats}")
+    return code
 
 
-chunk_id = int(os.environ["CHUNK_ID"])
-total_chunks = int(os.environ["TOTAL_CHUNKS"])
-logger.info(f"Scraping chunk {chunk_id}/{total_chunks}")
+def main() -> int:
+    cfg = RunConfig.from_env(RETAILER)
+    return asyncio.run(scrape(cfg, Storage(cfg.output_dir)))
 
-now = datetime.datetime.now(tz=datetime.UTC)
-folder_date = now.strftime("%Y-%m-%d")
-timestamp = now.strftime("%Y%m%d_%H%M%S")
 
-chunk_size = len(TESCO_IDS) // total_chunks
-start = chunk_id * chunk_size
-end = start + chunk_size if chunk_id < total_chunks - 1 else len(TESCO_IDS)
-product_ids = TESCO_IDS[start:end]
-
-already_processed = load_checkpoint(chunk_id, folder_date)
-if already_processed:
-    logger.info(f"Resuming from checkpoint: {len(already_processed)} already processed")
-    product_ids = [tpnc for tpnc in product_ids if tpnc not in already_processed]
-
-logger.info(f"Fetching {len(product_ids)} products (chunk {start}:{end})")
-
-successes, failures = asyncio.run(fetch_all_products(product_ids, chunk_id, folder_date, timestamp))
-
-logger.info(f"Success: {successes}, Failed: {failures}")
-delete_checkpoint(chunk_id, folder_date)
-logger.info(f"Completed chunk {chunk_id}")
+if __name__ == "__main__":
+    sys.exit(main())

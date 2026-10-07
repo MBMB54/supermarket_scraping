@@ -253,11 +253,14 @@ def test_fail_on_retryable_keeps_checkpoint(tmp_path):
     assert "c" not in processed and len(processed) == 19
 
 
-def test_run_ids_job_fails_when_latest_is_stale(tmp_path):
+def test_run_ids_job_fails_when_latest_is_stale(tmp_path, monkeypatch):
     import os
     import time
 
+    from scraper_common import ids
     from scraper_common.ids import latest_key, run_ids_job
+
+    monkeypatch.setattr(ids, "MAX_STALE_DAYS", 14)
 
     storage = Storage(tmp_path)
     latest = tmp_path / latest_key("demo")

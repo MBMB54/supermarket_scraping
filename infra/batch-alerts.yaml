@@ -1,0 +1,172 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Alerting for the supermarket scrapers: SNS email topic, EventBridge rule on Batch job FAILED,
+  and a scheduled Lambda that checks the per-chunk _run_summary files in S3. Not applied
+  automatically; see infra/README.md.
+
+Parameters:
+  AlertEmail:
+    Type: String
+  JobQueueName:
+    Type: String
+    Default: getting-started-fargate-job-queue
+  Bucket:
+    Type: String
+    Default: ie-supermarket-data
+  TotalChunks:
+    Type: Number
+    Default: 5
+  Retailers:
+    Type: String
+    Default: "tesco,aldi,supervalu,dunnes"
+  CheckSchedule:
+    Type: String
+    Default: cron(0 14 * * ? *)
+    Description: UTC time to verify that today's summaries exist and passed
+
+Resources:
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: supermarket-scraper-alerts
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlertEmail
+
+  AlertTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics: [!Ref AlertTopic]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: events.amazonaws.com}
+            Action: sns:Publish
+            Resource: !Ref AlertTopic
+
+  BatchJobFailedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: supermarket-batch-job-failed
+      EventPattern:
+        source: [aws.batch]
+        detail-type: ["Batch Job State Change"]
+        detail:
+          status: [FAILED]
+          jobQueue:
+            - !Sub "arn:aws:batch:${AWS::Region}:${AWS::AccountId}:job-queue/${JobQueueName}"
+      Targets:
+        - Id: sns
+          Arn: !Ref AlertTopic
+          InputTransformer:
+            InputPathsMap:
+              job: $.detail.jobName
+              id: $.detail.jobId
+              reason: $.detail.statusReason
+            InputTemplate: >-
+              "Batch job <job> (<id>) FAILED: <reason>"
+
+  SummaryCheckRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: read-summaries-publish-alert
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject]
+                Resource: !Sub "arn:aws:s3:::${Bucket}/raw/*"
+              - Effect: Allow
+                Action: [s3:ListBucket]
+                Resource: !Sub "arn:aws:s3:::${Bucket}"
+              - Effect: Allow
+                Action: [sns:Publish]
+                Resource: !Ref AlertTopic
+
+  SummaryCheckFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: supermarket_summary_check
+      Runtime: python3.13
+      Handler: index.lambda_handler
+      Role: !GetAtt SummaryCheckRole.Arn
+      Timeout: 120
+      Environment:
+        Variables:
+          BUCKET: !Ref Bucket
+          TOTAL_CHUNKS: !Ref TotalChunks
+          RETAILERS: !Ref Retailers
+          TOPIC_ARN: !Ref AlertTopic
+      Code:
+        ZipFile: |
+          import datetime
+          import json
+          import os
+
+          import boto3
+
+          s3 = boto3.client("s3")
+          sns = boto3.client("sns")
+          BUCKET = os.environ["BUCKET"]
+          CHUNKS = int(os.environ["TOTAL_CHUNKS"])
+          RETAILERS = os.environ["RETAILERS"].split(",")
+
+
+          def read(key):
+              try:
+                  return json.loads(s3.get_object(Bucket=BUCKET, Key=key)["Body"].read())
+              except s3.exceptions.NoSuchKey:
+                  return None
+
+
+          def lambda_handler(event, context):
+              today = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d")
+              problems = []
+              for retailer in RETAILERS:
+                  for chunk in range(CHUNKS):
+                      s = read(f"raw/{retailer}/{today}/_run_summary_chunk{chunk}.json")
+                      if s is None:
+                          problems.append(f"{retailer} chunk {chunk}: no summary for {today}")
+                      elif s.get("status") != "ok":
+                          problems.append(f"{retailer} chunk {chunk}: {s.get('failures')}")
+                  ids = read(f"raw/{retailer}/ids/_run_summary_{today}.json")
+                  if ids and ids.get("status") != "ok":
+                      problems.append(f"{retailer} IDs: {ids.get('status')} {ids.get('reason')}")
+              if problems:
+                  sns.publish(
+                      TopicArn=os.environ["TOPIC_ARN"],
+                      Subject=f"Scraper data-quality problems {today}",
+                      Message="\n".join(problems[:50]),
+                  )
+              return {"problems": len(problems)}
+
+  SummaryCheckSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: supermarket-summary-check
+      ScheduleExpression: !Ref CheckSchedule
+      Targets:
+        - Id: check
+          Arn: !GetAtt SummaryCheckFunction.Arn
+
+  SummaryCheckPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SummaryCheckFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt SummaryCheckSchedule.Arn
+
+Outputs:
+  TopicArn:
+    Value: !Ref AlertTopic

@@ -1,0 +1,18 @@
+# Draft: copy to .github/workflows/dbt-ci.yml. CI only (no AWS, no data): parses the project and
+# runs unit tests, which need no S3 access. The daily build runs on AWS Batch, not here.
+name: dbt-ci
+on:
+  pull_request:
+    paths: ["dbt/**", "infra/dbt/**"]
+jobs:
+  parse-and-unit-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r infra/dbt/requirements.txt
+      - run: dbt parse --project-dir dbt --profiles-dir infra/dbt
+        env: {DBT_DUCKDB_PATH: /tmp/ci.duckdb}
+      - run: dbt test --project-dir dbt --profiles-dir infra/dbt --select "test_type:unit"
+        env: {DBT_DUCKDB_PATH: /tmp/ci.duckdb}

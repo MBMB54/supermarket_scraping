@@ -1,0 +1,13 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow", "Action": "batch:SubmitJob",
+      "Resource": ["arn:aws:batch:eu-west-1:557690579730:job-queue/getting-started-fargate-job-queue",
+                   "arn:aws:batch:eu-west-1:557690579730:job-definition/ie_supermarket_batch_job_definition",
+                   "arn:aws:batch:eu-west-1:557690579730:job-definition/ie_supermarket_batch_job_definition:*",
+                   "arn:aws:batch:eu-west-1:557690579730:job-definition/ie_supermarket_ids_job_definition",
+                   "arn:aws:batch:eu-west-1:557690579730:job-definition/ie_supermarket_ids_job_definition:*"]
+    }
+  ]
+}

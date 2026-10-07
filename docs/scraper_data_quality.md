@@ -33,7 +33,7 @@ error_rate, empty_rate, not_found_rate, status (ok|failed), failures[], planned_
   Previously transient failures in supervalu/dunnes were also labelled `Not found in any store`;
   now they carry the real error, so `assert_scrape_error_rate` sees outages.
 - A failing run still writes its rows to S3; they remain in the dbt source glob.
-- Dunnes had 43% `Not found in any store` in a sampled 2026-10-05 batch, hence its higher threshold (85%, leaving headroom). Rationale: many items are stocked in only a few of the 103 stores (an ID checked against all stores was found in only 3), plus Dunnes `ids/latest` was last refreshed 2026-07-05 (the sitemap fetch is blocked by Cloudflare), so many IDs are discontinued. The threshold is a backstop for outages, not a coverage target.
+- Dunnes had 43% `Not found in any store` in a sampled 2026-10-05 batch, hence its higher threshold (85%, leaving headroom; `stores_per_chunk` stays at 60). Rationale: many items are stocked in only a few of the 103 stores (an ID checked against all stores was found in only 3), plus Dunnes `ids/latest` was last refreshed 2026-07-05 (the sitemap fetch is blocked by Cloudflare), so many IDs are discontinued. The threshold is a backstop for outages, not a coverage target.
 
 ## Local runs
 
@@ -48,5 +48,4 @@ from S3 unless `IDS_FILE` points at a local parquet. `RUN_DATE=YYYY-MM-DD` overr
 and GraphQL-body classification are unchanged; soft (still-throttled) records are written but left out
 of the checkpoint and fail the run (`fail_on_retryable=True`). `TESCO_OUTPUT_DIR` became `OUTPUT_DIR`.
 ID jobs: `ids/latest` is only overwritten after the empty/shrink guard; `TEST_MODE` now requires `OUTPUT_DIR`
-(it previously overwrote `ids/latest`). An ID job that stays rejected for more than `MAX_STALE_DAYS` (14)
-exits 1.
+(it previously overwrote `ids/latest`). The stale-latest exit 1 (`MAX_STALE_DAYS`, rejected ID job and `ids/latest` older than N days) is **disabled by default** (0); set e.g. `MAX_STALE_DAYS=14` to enable it.

@@ -1,21 +1,24 @@
 import asyncio
-import datetime
 import logging
-import os
 import re
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 import aiohttp
-import boto3
 import polars as pl
 import requests
-from tenacity import retry, retry_if_result, stop_after_attempt, wait_exponential
 
-logging.basicConfig(level=logging.INFO)
+from scraper_common.config import setup_logging
+from scraper_common.http import retry_until
+from scraper_common.ids import run_ids_job
+from scraper_common.storage import Storage
+
 logger = logging.getLogger("supervalu_ids")
 
-BUCKET = "ie-supermarket-data"
 RETAILER = "supervalu"
-REFRESH_DAYS = 7
+REFRESH_HOURS = 7 * 24
 STORE_ID = 364
 # Assortment is store-specific — a single store's category pages miss products
 # excluded from its local listing (e.g. regulated OTC meds) or with narrow regional
@@ -35,14 +38,10 @@ NEXT_PAGE_RE = re.compile(r'<link rel="next" href="([^"]+)"')
 SITEMAP_PRODUCT_ID_RE = re.compile(r"/product/[^<]+-id-(\d+)")
 
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=10, max=60),
-    retry=retry_if_result(lambda x: not x),
-    retry_error_callback=lambda s: "",
-)
 def fetch_sitemap() -> str:
-    return requests.get("https://shop.supervalu.ie/sitemap.xml", timeout=30).text
+    return retry_until(
+        lambda: requests.get("https://shop.supervalu.ie/sitemap.xml", timeout=30).text, wait=10
+    )
 
 
 def get_category_paths(xml_text: str) -> list[str]:
@@ -90,7 +89,7 @@ async def fetch_category_ids(
                 if next_match and page_ids
                 else None
             )
-        except Exception as e:
+        except (aiohttp.ClientError, TimeoutError) as e:
             logger.warning(f"Error fetching {url}: {e}")
             break
 
@@ -116,65 +115,26 @@ async def scrape_all_categories(category_paths: list[str], store_id: int) -> lis
     return all_ids
 
 
-def write_to_parquet_and_upload(records: list[str]) -> str:
-    now = datetime.datetime.now(tz=datetime.UTC)
-    folder_date = now.strftime("%Y-%m-%d")
-    timestamp = now.strftime("%Y%m%d_%H%M%S")
-    filename = f"{RETAILER}_product_ids_{timestamp}.parquet"
-    s3_uri = f"s3://{BUCKET}/raw/{RETAILER}/ids/date={folder_date}/{filename}"
-
-    df = pl.DataFrame({"product_id": records}).with_columns(
-        pl.lit(now).alias("scraped_at"),
-        pl.lit(RETAILER).alias("retailer"),
+def scrape() -> pl.DataFrame:
+    xml_text = fetch_sitemap()
+    category_paths = get_category_paths(xml_text)
+    sitemap_ids = get_sitemap_product_ids(xml_text)
+    category_ids: set[str] = set()
+    if category_paths:
+        for store_id in [STORE_ID, *EXTRA_STORE_IDS]:
+            category_ids |= set(asyncio.run(scrape_all_categories(category_paths, store_id)))
+    records = sorted(category_ids | set(sitemap_ids))
+    logger.info(
+        f"Combined {len(category_ids)} category-crawl IDs across {1 + len(EXTRA_STORE_IDS)} "
+        f"stores with {len(sitemap_ids)} sitemap IDs into {len(records)} unique IDs"
     )
-
-    df.write_parquet(s3_uri, compression="snappy", storage_options={"aws_region": "eu-west-1"})
-    logger.info(f"Uploaded {len(records)} product IDs to {s3_uri}")
-
-    latest_uri = f"s3://{BUCKET}/raw/{RETAILER}/ids/latest/{RETAILER}_product_ids.parquet"
-    df.write_parquet(latest_uri, compression="snappy", storage_options={"aws_region": "eu-west-1"})
-    logger.info(f"Updated latest IDs at {latest_uri}")
-
-    return s3_uri
+    return pl.DataFrame({"product_id": records}, schema={"product_id": pl.String})
 
 
-def _recently_scraped() -> bool:
-    s3 = boto3.client("s3")
-    try:
-        obj = s3.head_object(
-            Bucket=BUCKET, Key=f"raw/{RETAILER}/ids/latest/{RETAILER}_product_ids.parquet"
-        )
-        age = datetime.datetime.now(tz=datetime.UTC) - obj["LastModified"]
-        return age.days < REFRESH_DAYS
-    except s3.exceptions.ClientError:
-        return False
+def main() -> int:
+    setup_logging(RETAILER)
+    return run_ids_job(RETAILER, scrape, Storage.from_env(), min_age_hours=REFRESH_HOURS)
 
 
 if __name__ == "__main__":
-    force = os.environ.get("FORCE_REFRESH") == "1"
-    if not force and _recently_scraped():
-        logger.info(f"IDs scraped within last {REFRESH_DAYS} days — skipping")
-    else:
-        xml_text = fetch_sitemap()
-        if not xml_text:
-            logger.error(
-                "Sitemap fetch failed — sitemap likely blocked. Leaving latest/ unchanged."
-            )
-        else:
-            category_paths = get_category_paths(xml_text)
-            sitemap_ids = get_sitemap_product_ids(xml_text)
-            category_ids: set[str] = set()
-            if category_paths:
-                for store_id in [STORE_ID, *EXTRA_STORE_IDS]:
-                    store_ids = asyncio.run(scrape_all_categories(category_paths, store_id))
-                    category_ids |= set(store_ids)
-            records = list(category_ids | set(sitemap_ids))
-            logger.info(
-                f"Combined {len(category_ids)} category-crawl IDs across "
-                f"{1 + len(EXTRA_STORE_IDS)} stores with {len(sitemap_ids)} sitemap IDs "
-                f"into {len(records)} unique IDs"
-            )
-            if not records:
-                logger.error("0 IDs scraped. Leaving latest/ unchanged.")
-            else:
-                write_to_parquet_and_upload(records)
+    sys.exit(main())

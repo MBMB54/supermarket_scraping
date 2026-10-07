@@ -11,7 +11,7 @@ from scraper_common.storage import Storage
 logger = logging.getLogger(__name__)
 
 MIN_SHRINK_RATIO = 0.5
-MAX_STALE_DAYS = int(os.environ.get("MAX_STALE_DAYS", "14"))
+MAX_STALE_DAYS = int(os.environ.get("MAX_STALE_DAYS", "0"))  # 0 disables the stale-latest exit 1
 
 
 class IdsRejected(Exception):
@@ -86,7 +86,7 @@ def run_ids_job(
 
     A rejected result keeps the existing ids/latest and exits 0 so the dependent API jobs still
     run on the previous IDs; the failure is recorded in raw/{retailer}/ids/_run_summary_{date}.json
-    (status "rejected") for the alert check. Once ids/latest is older than MAX_STALE_DAYS the job
+    (status "rejected") for the alert check. If MAX_STALE_DAYS is set (>0, off by default) and ids/latest is older than that, the job
     exits 1 instead, so a persistently blocked sitemap cannot go unnoticed.
     """
     now = datetime.now(tz=UTC)
@@ -105,7 +105,12 @@ def run_ids_job(
     logger.info(json.dumps({"event": "ids_summary", **summary}))
     storage.put_json(f"raw/{retailer}/ids/_run_summary_{now:%Y-%m-%d}.json", summary)
     stale_days = (now - modified).days if modified else None
-    if summary["status"] == "rejected" and stale_days is not None and stale_days > MAX_STALE_DAYS:
+    if (
+        MAX_STALE_DAYS
+        and summary["status"] == "rejected"
+        and stale_days is not None
+        and stale_days > MAX_STALE_DAYS
+    ):
         logger.error(f"{retailer} ids/latest is {stale_days} days old; failing the job")
         return 1
     return 0

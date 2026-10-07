@@ -1,0 +1,5 @@
+# dbt-core + dbt-duckdb (Python 3.12) rather than Fusion: no licence needed in a container.
+# Verify the project under these versions before relying on the image (see docs/dbt_orchestration_plan.md).
+dbt-core~=1.10.0
+dbt-duckdb~=1.10.0
+boto3~=1.35
