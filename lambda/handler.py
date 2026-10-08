@@ -30,13 +30,21 @@ def submit_ids_job(batch, retailer: str, script: str, job_definition: str) -> di
 # Tesco is rate-limited to ~2 req/s aggregate (docs/tesco-429-incident.md): a compliant full pass
 # is ~166 min, so override the job definition's 7200s attempt timeout for tesco chunks.
 TESCO_ATTEMPT_DURATION_SECONDS = 14400
+# Pacing makes Tesco chunks rate-limit bound, not CPU bound (measured: ~110 MB RSS, <1% CPU), so
+# they do not need the job definition's 2 vCPU / 8 GB. See docs/scraper_data_quality.md.
+TESCO_RESOURCE_REQUIREMENTS = [
+    {"type": "VCPU", "value": "0.25"},
+    {"type": "MEMORY", "value": "1024"},
+]
 
 
 def submit_scraper_chunks(
     batch, retailer: str, api_script: str, ids_job_id: str | None = None
 ) -> list[dict]:
     kwargs = {}
+    container_overrides = {}
     if retailer == "tesco":
+        container_overrides["resourceRequirements"] = TESCO_RESOURCE_REQUIREMENTS
         kwargs["timeout"] = {"attemptDurationSeconds": TESCO_ATTEMPT_DURATION_SECONDS}
     if ids_job_id:
         kwargs["dependsOn"] = [{"jobId": ids_job_id, "type": "SEQUENTIAL"}]
@@ -48,6 +56,7 @@ def submit_scraper_chunks(
             jobQueue=JOB_QUEUE,
             jobDefinition=SCRAPER_JOB_DEFINITION,
             containerOverrides={
+                **container_overrides,
                 "command": ["python", api_script],
                 "environment": [
                     {"name": "CHUNK_ID", "value": str(chunk_id)},

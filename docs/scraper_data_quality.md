@@ -49,3 +49,18 @@ and GraphQL-body classification are unchanged; soft (still-throttled) records ar
 of the checkpoint and fail the run (`fail_on_retryable=True`). `TESCO_OUTPUT_DIR` became `OUTPUT_DIR`.
 ID jobs: `ids/latest` is only overwritten after the empty/shrink guard; `TEST_MODE` now requires `OUTPUT_DIR`
 (it previously overwrote `ids/latest`). The stale-latest exit 1 (`MAX_STALE_DAYS`, rejected ID job and `ids/latest` older than N days) is **disabled by default** (0); set e.g. `MAX_STALE_DAYS=14` to enable it.
+
+## Tesco chunk compute (measured 2026-10-08)
+
+Tesco chunks are pacing-bound (`TESCO_TOTAL_REQ_PER_SEC=2.0` split over 5 chunks = 0.4 req/s each), not CPU bound.
+Fargate test, `CHUNK_ID=1 TOTAL_CHUNKS=5 MAX_IDS=300 OUTPUT_DIR=/tmp/out` (nothing written to S3 raw):
+
+| Resources | req/s | ok | 429s | peak RSS | CPU time / wall |
+|---|---|---|---|---|---|
+| daily run, 2 vCPU / 8 GB (chunk 1, 4,005 ids) | 0.400 | 100% | 0 | n/a | n/a |
+| 0.5 vCPU / 2 GB | 0.401 | 300/300 | 0 | 113 MB | 2.7 s / 752 s |
+| 0.25 vCPU / 0.5 GB | 0.401 | 300/300 | 0 | 112 MB | 3.3 s / 759 s |
+
+`lambda/handler.py` now overrides Tesco chunk jobs to 0.25 vCPU / 1 GB (`TESCO_RESOURCE_REQUIREMENTS`); other retailers keep the job
+definition's 2 vCPU / 8 GB. The 1 GB (rather than 0.5 GB) leaves headroom for a full 4,000-id chunk's checkpoint and retry bursts.
+Revert by emptying that constant's use in `submit_scraper_chunks`.
