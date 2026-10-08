@@ -18,14 +18,16 @@ parsed AS (
 normalised AS (
     SELECT
         *,
-        {{ unit_qty_normalised('unit_raw', 'selling_qty', count_units=['each', 'pack', 'pk', 'sheet', 'sheets', 'slices', 'rolls', 'pair', 'pairs']) }} AS unit_qty_normalised
+        {{ normalize_text('title') }} AS title_norm,
+        {{ unit_qty_normalised('unit_raw', 'selling_qty', 'title_norm', count_units=['each', 'pack', 'pk', 'sheet', 'sheets', 'slices', 'rolls', 'pair', 'pairs']) }} AS unit_qty_normalised,
+        {{ unit_normalised('unit_raw') }} AS unit_normalised
     FROM parsed
 )
 
 SELECT
     id,
     supermarket,
-    {{ normalize_text('title') }} AS title,
+    title_norm AS title,
     {{ clean_title('title') }} AS title_cleaned,
     {{ normalize_text('brand') }} AS brand,
     CAST(NULL AS BOOLEAN) AS is_own_brand,
@@ -41,10 +43,10 @@ SELECT
     selling_qty AS selling_size,
     unit_raw AS unit,
     unit_qty_normalised,
-    {{ unit_normalised('unit_raw') }} AS unit_normalised,
+    unit_normalised,
     -- raw price.perUnit is a pack weight, not a euro amount, so there is no usable unit price
     CAST(NULL AS DOUBLE) AS unit_price,
-    {{ price_per_unit_normalised('price', 'unit_qty_normalised') }} AS price_per_unit_normalised,
+    {{ price_per_unit_normalised('price', 'unit_qty_normalised', 'unit_normalised') }} AS price_per_unit_normalised,
     CAST(NULL AS VARCHAR) AS promotion_description,
     CAST(NULL AS VARCHAR) AS promotion_type,
     CAST(NULL AS VARCHAR[]) AS promotion_qualities,

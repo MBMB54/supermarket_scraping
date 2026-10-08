@@ -31,6 +31,14 @@ works. `--static-analysis strict` still fails on `list_filter(json_keys(...))` (
 - `parquet_output_prefix`: where dbt writes Parquet (default `s3://ie-supermarket-data/processed`); override to test.
 - `embeddings_input_prefix`: where dbt reads embeddings (default same prefix).
 
+## Raw source reads
+
+Sources use `read_json(..., union_by_name=true)` (`models/staging/raw_s3.yml`). Plain auto-detection samples one schema for the whole glob, so a new tag key in `data.attributes` on a later file (e.g. `back To School`) fails the read with `has unknown key`; `union_by_name` infers per file and merges. Full-day read times (dunnes/supervalu/aldi/tesco): about 2.6 / 6.4 / 0.5 / 2.6 s, versus 1.2 / 1.5 / 0.5 / 2.3 s before. Stale ids (`Not found in any store`, `HTTP 404`) are dropped in staging via `is_stale_id_error`.
+
+## Unit prices
+
+`unit_qty_normalised` turns pack sizes into kg / l / m. For counted items (blank unit, Tesco `SHT`, Aldi each/pack) it is the item count, giving a per-item `price_per_unit_normalised` (4 dp). If the title states a different pack count (N pack, Npk, pack of N, N x), or the unit is not a count (m2), it is 1.0, i.e. price per pack.
+
 ## Price history
 
 `fct_product_price_daily` is incremental and never full-refreshed; to backfill replay run_dates in any order, e.g. `dbtf run --select +fct_product_price_daily --vars '{run_date: 2026-08-05}'`, then `dbtf run --select fct_price_history`.

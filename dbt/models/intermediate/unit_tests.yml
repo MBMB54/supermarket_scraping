@@ -71,3 +71,37 @@ unit_tests:
     expect:
       rows:
         - {id: d1, ingredients: "Wheat Flour, Water", is_gluten_free: true, is_kosher: true, is_halal: false}
+
+  - name: int_tesco_count_units_per_item_price
+    description: Counted units give per-item prices (4 dp); a title pack count that disagrees with the quantity falls back to 1.0; no quantity gives 1.0.
+    model: int_tesco
+    given:
+      - input: ref('stg_tesco')
+        rows:
+          - {id: c1, supermarket: tesco, title: "Kitchen Roll", quantity: 100, unit: sht, price: 1.5}
+          - {id: c2, supermarket: tesco, title: "Baby Wipes 9 pack", quantity: 540, unit: sht, price: 20.0}
+          - {id: c3, supermarket: tesco, title: "Tissues 9 pack", quantity: 9, unit: sht, price: 2.7}
+          - {id: c4, supermarket: tesco, title: "Single Item", unit: sngl, price: 2.0}
+    expect:
+      rows:
+        - {id: c1, unit_qty_normalised: 100.0, unit_normalised: each, price_per_unit_normalised: 0.015}
+        - {id: c2, unit_qty_normalised: 1.0, unit_normalised: each, price_per_unit_normalised: 20.0}
+        - {id: c3, unit_qty_normalised: 9.0, unit_normalised: each, price_per_unit_normalised: 0.3}
+        - {id: c4, unit_qty_normalised: 1.0, unit_normalised: each, price_per_unit_normalised: 2.0}
+
+  - name: int_supervalu_count_units_per_item_price
+    description: Blank-unit counts become per-item prices unless the title pack count disagrees; m2 area is never a count.
+    model: int_supervalu
+    given:
+      - input: ref('stg_supervalu')
+        rows:
+          - {id: s1, supermarket: supervalu, title: "Hens Eggs 12 Piece", quantity: 12, price: 3.0}
+          - {id: s2, supermarket: supervalu, title: "Bic Pens 10pk", quantity: 1, price: 3.0}
+          - {id: s3, supermarket: supervalu, title: "Wipes 8 pack 48 piece", quantity: 384, price: 11.5}
+          - {id: s4, supermarket: supervalu, title: "Foil", quantity: 4.5, unit: "m²", price: 1.0}
+    expect:
+      rows:
+        - {id: s1, unit_qty_normalised: 12.0, unit_normalised: each, price_per_unit_normalised: 0.25}
+        - {id: s2, unit_qty_normalised: 1.0, unit_normalised: each, price_per_unit_normalised: 3.0}
+        - {id: s3, unit_qty_normalised: 1.0, unit_normalised: each, price_per_unit_normalised: 11.5}
+        - {id: s4, unit_qty_normalised: 1.0, unit_normalised: each, price_per_unit_normalised: 1.0}

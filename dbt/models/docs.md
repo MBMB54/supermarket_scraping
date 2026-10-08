@@ -34,13 +34,13 @@
 
 {% docs col_unit %}Lower-cased retailer unit for selling_size (g, kg, ml, l, cl, m, ...).{% enddocs %}
 
-{% docs col_unit_qty_normalised %}selling_size converted to kg, l or m; 1.0 for non-measured units except Aldi pack counts (see macro unit_qty_normalised).{% enddocs %}
+{% docs col_unit_qty_normalised %}selling_size converted to kg, l or m. For counted items (blank unit, Tesco sheets, Aldi each/pack) it is the item count, so price_per_unit_normalised is per item; 1.0 (price per pack) when there is no count, the unit is not a count (e.g. m2 area), or the title states a pack count (N pack, Npk, pack of N, N x) that differs from the count.{% enddocs %}
 
 {% docs col_unit_normalised %}Normalised unit: kg, l, m or each.{% enddocs %}
 
 {% docs col_unit_price %}Retailer-quoted price per unit of measure in EUR. NULL for Aldi, which has no usable value.{% enddocs %}
 
-{% docs col_price_per_unit_normalised %}price divided by unit_qty_normalised, rounded to 2 dp: comparable EUR per kg / l / each.{% enddocs %}
+{% docs col_price_per_unit_normalised %}price divided by unit_qty_normalised: EUR per kg / l / m rounded to 2 dp, or EUR per item (unit_normalised = each) rounded to 4 dp so small per-item prices such as sheets are not rounded to zero.{% enddocs %}
 
 {% docs col_promotion_description %}Text of the first promotion on the product.{% enddocs %}
 

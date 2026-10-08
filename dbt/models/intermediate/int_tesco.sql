@@ -6,7 +6,8 @@ normalised AS (
     SELECT
         *,
         {{ normalize_text('title') }} AS title_norm,
-        {{ unit_qty_normalised('unit', 'quantity') }} AS unit_qty_normalised,
+        {{ unit_qty_normalised('unit', 'quantity', 'title_norm') }} AS unit_qty_normalised,
+        {{ unit_normalised('unit') }} AS unit_normalised,
         -- price is the current effective price: only a price_cut discount lowers it. Multibuy
         -- promos (3-for-2, ...) leave the unit price unchanged.
         CASE WHEN is_discount AND promotion_price IS NOT NULL
@@ -35,9 +36,9 @@ SELECT
     quantity::DOUBLE AS selling_size,
     unit::VARCHAR AS unit,
     unit_qty_normalised::DOUBLE AS unit_qty_normalised,
-    {{ unit_normalised('unit') }}::VARCHAR AS unit_normalised,
+    unit_normalised::VARCHAR AS unit_normalised,
     unit_price::DOUBLE AS unit_price,
-    {{ price_per_unit_normalised('effective_price', 'unit_qty_normalised') }}::DOUBLE AS price_per_unit_normalised,
+    {{ price_per_unit_normalised('effective_price', 'unit_qty_normalised', 'unit_normalised') }}::DOUBLE AS price_per_unit_normalised,
     promotion_description::VARCHAR AS promotion_description,
     promotion_type::VARCHAR AS promotion_type,
     promotion_qualities::VARCHAR[] AS promotion_qualities,

@@ -3,7 +3,7 @@ WITH source AS (
     -- Dead product IDs (ID feed lags the price scrape) come back with data = NULL and exactly this
     -- error. Filter the specific string, not `error IS NOT NULL`, so real fetch failures stay
     -- visible to assert_scrape_error_rate and the null-row tests.
-    WHERE error IS DISTINCT FROM 'Not found in any store'
+    WHERE NOT coalesce({{ is_stale_id_error('error') }}, false)
 )
 
 SELECT

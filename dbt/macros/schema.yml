@@ -26,7 +26,7 @@ macros:
         type: string
         description: Timestamp expression.
   - name: unit_qty_normalised
-    description: Converts a pack quantity to kg, l or m; units listed in count_units use the count itself; other non-measured units get 1.0.
+    description: Converts a pack quantity to kg, l or m; counting units (blank unit or count_units) use the item count unless the title states a different pack count; other units get 1.0.
     arguments:
       - name: unit
         type: string
@@ -34,17 +34,26 @@ macros:
       - name: qty
         type: string
         description: Quantity column.
+      - name: title
+        type: string
+        description: Normalised title column; enables the pack-count check (optional).
       - name: count_units
         type: list
-        description: Units that are genuine item counts (optional).
+        description: Units that count items besides blank (default sht, sngl, prs).
   - name: unit_normalised
     description: Maps a unit to kg, l, m or each.
     arguments:
       - name: unit
         type: string
         description: Lower-cased unit column.
+  - name: title_pack_count
+    description: Pack count stated in a normalised title (N pack, Npk, pack of N, N x), or NULL.
+    arguments:
+      - name: title
+        type: string
+        description: Normalised title column.
   - name: price_per_unit_normalised
-    description: Price divided by normalised quantity, rounded to 2 dp; NULL when quantity is 0.
+    description: Price divided by normalised quantity; 2 dp, or 4 dp for per-item (each) prices; NULL when quantity is 0.
     arguments:
       - name: price
         type: string
@@ -52,6 +61,9 @@ macros:
       - name: qty_normalised
         type: string
         description: Normalised quantity expression.
+      - name: unit_normalised
+        type: string
+        description: Normalised unit column (each selects 4 dp).
   - name: parse_price
     description: Strips currency symbols and text from a display string and casts to DOUBLE.
     arguments:
@@ -142,3 +154,9 @@ macros:
       - name: section
         type: string
         description: Extracted section.
+  - name: is_stale_id_error
+    description: TRUE when a raw error means the product id no longer exists ('Not found in any store' or 'HTTP 404').
+    arguments:
+      - name: error
+        type: string
+        description: Raw error column.

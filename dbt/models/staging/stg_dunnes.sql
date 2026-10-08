@@ -1,7 +1,7 @@
 WITH source AS (
     SELECT * FROM {{ source('external_source', 'dunnes') }}
     -- Same stale-ID pattern and rationale as stg_supervalu (same storefront backend).
-    WHERE error IS DISTINCT FROM 'Not found in any store'
+    WHERE NOT coalesce({{ is_stale_id_error('error') }}, false)
 )
 
 SELECT

@@ -8,7 +8,10 @@ sources:
       a missing partition makes the read fail, and min_row_count catches an empty one.
     config:
       meta:
-        external_location: "s3://ie-supermarket-data/raw/{name}/{{ run_date() | trim }}/*.jsonl.gz"
+        # union_by_name infers the schema per file and merges it. Plain auto-detection samples one schema for
+        # the whole glob, so a new key in a free-form object (data.attributes tags such as
+        # "back To School") breaks the read of any later file.
+        external_location: "read_json('s3://ie-supermarket-data/raw/{name}/{{ run_date() | trim }}/*.jsonl.gz', union_by_name=true)"
     tables:
       - name: aldi
         description: Aldi API responses, one record per sku requested.

@@ -1,5 +1,7 @@
 WITH source AS (
     SELECT * FROM {{ source('external_source', 'aldi') }}
+    -- Dead skus come back as HTTP 404 with no data
+    WHERE NOT coalesce({{ is_stale_id_error('error') }}, false)
 )
 
 SELECT
