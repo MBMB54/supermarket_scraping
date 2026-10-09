@@ -41,6 +41,20 @@ Sources use `read_json(..., union_by_name=true)` (`models/staging/raw_s3.yml`). 
 
 ## Price history
 
-`fct_product_price_daily` is incremental and never full-refreshed; to backfill replay run_dates in any order, e.g. `dbtf run --select +fct_product_price_daily --vars '{run_date: 2026-08-05}'`, then `dbtf run --select fct_price_history`.
+`fct_product_price_daily` is incremental and never full-refreshed; it holds one row per product per scrape date. `fct_price_history` derives price versions from it, so load order does not matter.
+
+- `is_current`: latest version of the product. `is_active`: the product was seen on its retailer's latest loaded day (`active_grace_days` var, default 0, tolerates missed days). `last_seen_date` is on every version row.
+- Current prices of live products: `SELECT * FROM fct_price_history WHERE is_current AND is_active`.
+
+Backfill (replays raw partitions oldest first, no tests or gates; only retailers with a partition and some data on that day are built):
+
+```bash
+python dbt/scripts/backfill.py --start 2026-02-01 --end 2026-10-08 \
+    --profiles-dir <dir with profiles.yml> --db <the duckdb file in that profile> \
+    --parquet-prefix <local dir> --dbt ~/.local/bin/dbt
+dbtf build --project-dir dbt --select fct_price_history assert_price_history_consistent
+```
+
+Per-day load stats are written to table `backfill_stats` (rows, null titles, null prices): days with mostly NULL prices (e.g. Tesco 429 days) contribute only their priced rows to the history.
 
 See `docs/dbt_orchestration_plan.md` for scheduled runs.

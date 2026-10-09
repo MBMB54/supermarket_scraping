@@ -233,10 +233,14 @@ models:
 
   - name: fct_price_history
     description: >
-      Price history as slowly-changing versions, derived from fct_product_price_daily. A new row
-      starts on the first scrape date where price, was_price or unit_price changed. Replaces the
-      dbt snapshot scd_product_prices, whose wall-clock valid_from could not handle backfills.
-      A product missing for some days keeps its last version open (valid_to only moves on a change).
+      Price history as slowly-changing versions, derived from fct_product_price_daily (replaces the
+      dbt snapshot scd_product_prices). A new row starts on the first scrape date where price,
+      was_price or unit_price changed. is_current marks the latest version; is_active says the
+      product was seen on the retailer's latest loaded day (var active_grace_days tolerates missed
+      days). Current prices of live products: WHERE is_current AND is_active.
+    config:
+      contract:
+        enforced: true
     data_tests:
       - unique_combination:
           arguments:
@@ -244,25 +248,50 @@ models:
     columns:
       - name: supermarket
         description: "{{ doc('col_supermarket') }}"
+        data_type: varchar
+        data_tests: [not_null]
       - name: id
         description: "{{ doc('col_id') }}"
+        data_type: varchar
+        data_tests: [not_null]
       - name: title
         description: "{{ doc('col_title') }}"
+        data_type: varchar
       - name: brand
         description: "{{ doc('col_brand') }}"
+        data_type: varchar
       - name: price
         description: "{{ doc('col_price') }}"
+        data_type: double
+        data_tests: [not_null]
       - name: was_price
         description: "{{ doc('col_was_price') }}"
+        data_type: double
       - name: unit_price
         description: "{{ doc('col_unit_price') }}"
+        data_type: double
       - name: is_discount
         description: "{{ doc('col_is_discount') }}"
+        data_type: boolean
       - name: is_promotion
         description: "{{ doc('col_is_promotion') }}"
+        data_type: boolean
       - name: valid_from
         description: First scrape date this price version was seen.
+        data_type: date
+        data_tests: [not_null]
       - name: valid_to
-        description: First scrape date of the next version (exclusive); NULL for the current version.
+        description: First scrape date of the next version (exclusive); NULL for the latest version.
+        data_type: date
       - name: is_current
-        description: TRUE for the latest version of the product.
+        description: "{{ doc('col_is_current') }}"
+        data_type: boolean
+        data_tests: [not_null]
+      - name: last_seen_date
+        description: "{{ doc('col_last_seen_date') }}"
+        data_type: date
+        data_tests: [not_null]
+      - name: is_active
+        description: "{{ doc('col_is_active') }}"
+        data_type: boolean
+        data_tests: [not_null]

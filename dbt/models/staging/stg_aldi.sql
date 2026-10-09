@@ -5,7 +5,7 @@ WITH source AS (
 )
 
 SELECT
-    data.sku AS id,
+    COALESCE(data.sku, product_id) AS id,
     'aldi' AS supermarket,
     data.name AS title,
     data.brandName AS brand,

@@ -91,3 +91,10 @@
 {% docs col_is_product_available %}TRUE when the product is currently purchasable.{% enddocs %}
 
 {% docs col_scraped_date %}Scrape date: the run_date of the raw S3 partition the row came from.{% enddocs %}
+
+{% docs col_is_current %}TRUE for the latest price version of the product (valid_to is NULL). Says nothing about whether the product still exists; combine with is_active.{% enddocs %}
+
+{% docs col_last_seen_date %}Latest scrape date on which the product appeared with a price, repeated on every version row of the product.{% enddocs %}
+
+{% docs col_is_active %}TRUE when last_seen_date is within active_grace_days (default 0) of the latest scrape date loaded for the same retailer, i.e. the product is still being listed. Live prices: is_current AND is_active.{% enddocs %}
+

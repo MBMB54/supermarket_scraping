@@ -1,0 +1,19 @@
+unit_tests:
+  - name: fct_price_history_marks_disappeared_products_inactive
+    description: A product that stops appearing keeps its history but is inactive; other retailers are judged against their own latest day; last_seen_date is on every version row.
+    model: fct_price_history
+    given:
+      - input: ref('fct_product_price_daily')
+        rows:
+          - {supermarket: tesco, id: p1, scraped_date: "2026-08-01", price: 1.0}
+          - {supermarket: tesco, id: p1, scraped_date: "2026-08-02", price: 1.0}
+          - {supermarket: tesco, id: p1, scraped_date: "2026-08-03", price: 1.0}
+          - {supermarket: tesco, id: p2, scraped_date: "2026-08-01", price: 2.0}
+          - {supermarket: tesco, id: p2, scraped_date: "2026-08-02", price: 2.5}
+          - {supermarket: aldi, id: q1, scraped_date: "2026-08-01", price: 3.0}
+    expect:
+      rows:
+        - {supermarket: tesco, id: p1, valid_from: "2026-08-01", valid_to: null, is_current: true, last_seen_date: "2026-08-03", is_active: true}
+        - {supermarket: tesco, id: p2, price: 2.0, valid_from: "2026-08-01", valid_to: "2026-08-02", is_current: false, last_seen_date: "2026-08-02", is_active: false}
+        - {supermarket: tesco, id: p2, price: 2.5, valid_from: "2026-08-02", valid_to: null, is_current: true, last_seen_date: "2026-08-02", is_active: false}
+        - {supermarket: aldi, id: q1, valid_from: "2026-08-01", valid_to: null, is_current: true, last_seen_date: "2026-08-01", is_active: true}
