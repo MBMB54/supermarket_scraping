@@ -43,8 +43,20 @@ Sources use `read_json(..., union_by_name=true)` (`models/staging/raw_s3.yml`). 
 
 `fct_product_price_daily` is incremental and never full-refreshed; it holds one row per product per scrape date. `fct_price_history` derives price versions from it, so load order does not matter.
 
-- `is_current`: latest version of the product. `is_active`: the product was seen on its retailer's latest loaded day (`active_grace_days` var, default 0, tolerates missed days). `last_seen_date` is on every version row.
+- `is_current`: latest version of the product. `is_active`: the product was seen within its retailer's grace period of that retailer's latest loaded day. `last_seen_date` is on every version row.
+- Grace days are per retailer, var `active_grace_days` in `dbt_project.yml` (tesco 2, aldi 2, dunnes 8, supervalu 8; others use `default`). Measured from the backfill, excluding the Tesco 429 era and days over 5% null prices. Share of product returns covered: tesco 80% at 2 (the rest are exact 7-day gaps from February), aldi 12% at 2 (its absences are weeks-long relists, so no grace helps), dunnes 90% at 8 (95% would need 17), supervalu 67% at 8 (a cluster of 7-8 day absences; 95% would need 30).
+- Why Dunnes flickers: each scrape chunk tries a fixed store subset (`random.Random(chunk_id)` shuffle of the store list, so it is stable day to day) and takes the first store that has the product. IDs are split into contiguous slices, so when the ID list changes, products shift between chunks and are tried against different stores. A product stocked only in stores outside its chunk's subset disappears; a product found in a different store can also show that store's price.
 - Current prices of live products: `SELECT * FROM fct_price_history WHERE is_current AND is_active`.
+
+Rebuild the real database (`supermarket_data.db`, profile `dev` in `~/.dbt/profiles.yml`). Backups of the DB and of `processed/all_supermarket_products.parquet` as of 2026-10-09 are in `~/supermarket_backups/`.
+
+```bash
+cp supermarket_data.db ~/supermarket_backups/supermarket_data_$(date +%Y%m%d).db   # first
+dbtf seed --project-dir dbt
+caffeinate -i uv run python dbt/scripts/backfill.py --start 2026-02-01 --end <latest> \
+    --profiles-dir ~/.dbt --db supermarket_data.db --parquet-prefix /tmp/processed --dbt ~/.local/bin/dbt --resume
+dbtf build --project-dir dbt --vars '{run_date: <latest>}'   # also writes s3://…/processed/all_supermarket_products.parquet
+```
 
 Backfill (replays raw partitions oldest first, no tests or gates; only retailers with a partition and some data on that day are built):
 

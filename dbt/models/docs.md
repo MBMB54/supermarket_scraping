@@ -96,5 +96,5 @@
 
 {% docs col_last_seen_date %}Latest scrape date on which the product appeared with a price, repeated on every version row of the product.{% enddocs %}
 
-{% docs col_is_active %}TRUE when last_seen_date is within active_grace_days (default 0) of the latest scrape date loaded for the same retailer, i.e. the product is still being listed. Live prices: is_current AND is_active.{% enddocs %}
+{% docs col_is_active %}TRUE when last_seen_date is within the retailer's active_grace_days of the latest scrape date loaded for the same retailer, i.e. the product is still being listed. Live prices: is_current AND is_active.{% enddocs %}
 

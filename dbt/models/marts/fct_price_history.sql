@@ -5,11 +5,10 @@
 
     last_seen_date is the product's latest scrape date (the same on every version row). is_active
     compares it with the latest scrape date loaded for the SAME retailer, so one retailer's missed
-    run does not mark the others inactive. active_grace_days (default 0) tolerates that many missed
-    days: a failed fetch leaves no daily row, so a product can vanish for a day and come back.
+    run does not mark the others inactive. active_grace_days (dict var, per retailer) tolerates that many
+    missed days: a failed fetch or a store/ID-list shift leaves no daily row, so a product can vanish
+    for a few days and come back.
     Live prices: WHERE is_current AND is_active. -#}
-{% set grace = var('active_grace_days', 0) %}
-
 WITH daily AS (
     SELECT
         *,
@@ -56,7 +55,7 @@ SELECT
     LEAD(v.scraped_date) OVER (PARTITION BY v.supermarket, v.id ORDER BY v.scraped_date)::DATE AS valid_to,
     (LEAD(v.scraped_date) OVER (PARTITION BY v.supermarket, v.id ORDER BY v.scraped_date) IS NULL)::BOOLEAN AS is_current,
     s.last_seen_date::DATE AS last_seen_date,
-    (s.last_seen_date >= l.latest_scraped_date - INTERVAL {{ grace }} DAY)::BOOLEAN AS is_active
+    (s.last_seen_date >= l.latest_scraped_date - ({{ active_grace_days('supermarket') }}) * INTERVAL 1 DAY)::BOOLEAN AS is_active
 FROM versions AS v
 INNER JOIN last_seen AS s USING (supermarket, id)
 INNER JOIN latest_load AS l USING (supermarket)

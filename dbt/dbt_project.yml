@@ -20,6 +20,9 @@ vars:
   # int_all_supermarket_products -> {prefix}/all_supermarket_products.parquet, which
   # ml/embeddings.py reads (it hardcodes processed/all_supermarket_products.parquet, not this var).
   # Override with a local dir when testing so production S3 is not touched.
+  # Days a product may go unseen and still count as active in fct_price_history, per retailer
+  # (measured from the backfill: docs in README). Unlisted retailers use default.
+  active_grace_days: {default: 2, tesco: 2, aldi: 2, dunnes: 8, supervalu: 8}
   parquet_output_prefix: "s3://ie-supermarket-data/processed"
   # Prefix dbt READS embeddings from ({prefix}/embeddings/{embedding_model}/...), written by ml/embeddings.py.
   embeddings_input_prefix: "s3://ie-supermarket-data/processed"

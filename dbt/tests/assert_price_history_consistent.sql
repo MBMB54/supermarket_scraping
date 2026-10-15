@@ -1,8 +1,6 @@
 -- Structural checks on fct_price_history: exactly one current version per product, versions do not
 -- overlap, last_seen_date is the same across a product's versions, and is_active matches the
 -- retailer's latest loaded day (recomputed from the daily facts).
-{% set grace = var('active_grace_days', 0) %}
-
 WITH per_key AS (
     SELECT
         supermarket,
@@ -32,4 +30,4 @@ WHERE current_rows <> 1
    OR active_values <> 1
    OR bad_ranges > 0
    OR bad_current_flag > 0
-   OR is_active <> (k.last_seen_date >= latest.latest_scraped_date - INTERVAL {{ grace }} DAY)
+   OR is_active <> (k.last_seen_date >= latest.latest_scraped_date - ({{ active_grace_days('k.supermarket') }}) * INTERVAL 1 DAY)

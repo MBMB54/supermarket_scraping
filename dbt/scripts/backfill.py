@@ -40,14 +40,39 @@ def partitions(s3, retailer: str) -> set[str]:
             return out
 
 
-def has_payload(con, retailer: str, ds: str) -> bool:
+PROBE = """
+import sys, duckdb
+con = duckdb.connect()
+for q in ("INSTALL aws", "LOAD aws", "INSTALL httpfs", "LOAD httpfs", "SET s3_region='eu-west-1'",
+          "SET http_timeout=30", "SET http_retries=2",
+          "CREATE SECRET (TYPE s3, PROVIDER credential_chain)"):
+    con.execute(q)
+n = con.execute(
+    "SELECT count(*) FILTER (WHERE data IS NOT NULL AND CAST(data AS VARCHAR) <> 'null') "
+    f"FROM read_json('s3://{sys.argv[1]}/raw/{sys.argv[2]}/{sys.argv[3]}/*.jsonl.gz', union_by_name=true)"
+).fetchone()[0]
+print(n)
+"""
+
+
+def has_payload(retailer: str, ds: str) -> bool:
     """False for days where every record failed (data NULL everywhere): the typed models cannot
-    even bind such a day, and it would contribute no prices anyway."""
-    n = con.execute(
-        "SELECT count(*) FILTER (WHERE data IS NOT NULL AND CAST(data AS VARCHAR) <> 'null') "
-        f"FROM read_json('s3://{BUCKET}/raw/{retailer}/{ds}/*.jsonl.gz', union_by_name=true)"
-    ).fetchone()[0]
-    return n > 0
+    even bind such a day, and it would contribute no prices anyway. Runs in a subprocess with a
+    timeout and retries, because S3 reads from a laptop occasionally hang or fail auth."""
+    for _attempt in range(4):
+        try:
+            r = subprocess.run(
+                [sys.executable, "-c", PROBE, BUCKET, retailer, ds],
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+        except subprocess.TimeoutExpired:
+            continue
+        if r.returncode == 0:
+            return int(r.stdout.strip().splitlines()[-1]) > 0
+        time.sleep(15)
+    raise RuntimeError(f"payload probe failed 4 times for {retailer} {ds}")
 
 
 def main() -> int:
@@ -59,29 +84,42 @@ def main() -> int:
     ap.add_argument("--parquet-prefix", required=True, help="local dir; never production S3")
     ap.add_argument("--project-dir", default="dbt")
     ap.add_argument("--dbt", default="dbt")
+    ap.add_argument("--timeout", type=int, default=420, help="seconds per dbt attempt")
+    ap.add_argument(
+        "--resume", action="store_true", help="skip dates already recorded in backfill_stats"
+    )
     a = ap.parse_args()
     if a.parquet_prefix.startswith("s3://"):
         sys.exit("refusing an S3 parquet prefix for a backfill")
 
-    probe = duckdb.connect()
-    for q in (
-        "INSTALL aws",
-        "LOAD aws",
-        "INSTALL httpfs",
-        "LOAD httpfs",
-        "SET s3_region='eu-west-1'",
-        "CREATE SECRET (TYPE s3, PROVIDER credential_chain)",
-    ):
-        probe.execute(q)
     s3 = boto3.client("s3")
     have = {r: partitions(s3, r) for r in RETAILERS}
     d, end = date.fromisoformat(a.start), date.fromisoformat(a.end)
     failed = []
+
+    def already_done(ds: str, retailers: list[str]) -> bool:
+        con = duckdb.connect(a.db, read_only=True)
+        try:
+            got = {
+                r[0]
+                for r in con.execute(
+                    "SELECT supermarket FROM backfill_stats WHERE run_date = ?", [ds]
+                ).fetchall()
+            }
+        except duckdb.CatalogException:
+            return False
+        finally:
+            con.close()
+        return set(retailers) <= got
+
     while d <= end:
         ds = d.isoformat()
         present = [r for r in RETAILERS if ds in have[r]]
         d += timedelta(days=1)
-        empty = [r for r in present if not has_payload(probe, r, ds)]
+        if a.resume and present and already_done(ds, present):
+            print(f"{ds} already loaded, skipping", flush=True)
+            continue
+        empty = [r for r in present if not has_payload(r, ds)]
         present = [r for r in present if r not in empty]
         if empty:
             print(f"{ds} skipped, no payload at all: {empty}", flush=True)
@@ -91,22 +129,35 @@ def main() -> int:
             {"run_date": ds, "retailers": present, "parquet_output_prefix": a.parquet_prefix}
         )
         t0 = time.time()
-        rc = subprocess.run(
-            [
-                a.dbt,
-                "run",
-                "--project-dir",
-                a.project_dir,
-                "--profiles-dir",
-                a.profiles_dir,
-                "--select",
-                "+fct_product_price_daily",
-                "--vars",
-                vars_,
-            ],
-            capture_output=True,
-            text=True,
-        )
+        rc = None
+        for _attempt in range(3):  # S3 reads occasionally stall for many minutes: cut and retry
+            try:
+                rc = subprocess.run(
+                    [
+                        a.dbt,
+                        "run",
+                        "--project-dir",
+                        a.project_dir,
+                        "--profiles-dir",
+                        a.profiles_dir,
+                        "--select",
+                        "+fct_product_price_daily",
+                        "--vars",
+                        vars_,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=a.timeout,
+                )
+            except subprocess.TimeoutExpired:
+                print(f"{ds} attempt timed out after {a.timeout}s, retrying", flush=True)
+                continue
+            if rc.returncode == 0:
+                break
+        if rc is None:
+            failed.append(ds)
+            print(f"{ds} FAILED: timed out 3 times", flush=True)
+            continue
         secs = round(time.time() - t0, 1)
         if rc.returncode:
             failed.append(ds)

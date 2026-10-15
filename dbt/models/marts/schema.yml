@@ -236,8 +236,8 @@ models:
       Price history as slowly-changing versions, derived from fct_product_price_daily (replaces the
       dbt snapshot scd_product_prices). A new row starts on the first scrape date where price,
       was_price or unit_price changed. is_current marks the latest version; is_active says the
-      product was seen on the retailer's latest loaded day (var active_grace_days tolerates missed
-      days). Current prices of live products: WHERE is_current AND is_active.
+      product was seen on the retailer's latest loaded day (var active_grace_days, per retailer, tolerates
+      missed days). Current prices of live products: WHERE is_current AND is_active.
     config:
       contract:
         enforced: true
