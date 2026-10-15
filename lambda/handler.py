@@ -93,8 +93,8 @@ def lambda_handler(event, context):
         submit_scraper_chunks(batch, "supervalu", "supervalu_api.py", supervalu_ids["jobId"])
     )
 
-    dunnes_ids = submit_ids_job(batch, "dunnes", "dunnes_ids.py", SCRAPER_JOB_DEFINITION)
-    submitted.append(dunnes_ids)
-    submitted.extend(submit_scraper_chunks(batch, "dunnes", "dunnes_api.py", dunnes_ids["jobId"]))
+    # dunnes_ids.py is not scheduled: its sitemap is blocked by Cloudflare (docs/dunnes_ids_investigation.md)
+    # and ids/latest is frozen at the list derived from raw by scripts/dunnes_ids_from_raw.py.
+    submitted.extend(submit_scraper_chunks(batch, "dunnes", "dunnes_api.py"))
 
     return {"statusCode": 200, "jobs": submitted}

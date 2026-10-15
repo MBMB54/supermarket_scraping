@@ -33,3 +33,17 @@ def test_other_retailers_keep_job_definition_resources():
         for kwargs in submitted(retailer):
             assert "resourceRequirements" not in kwargs["containerOverrides"]
             assert "timeout" not in kwargs
+
+
+def test_dunnes_ids_job_is_not_scheduled(monkeypatch):
+    submitted = []
+
+    class FakeBatch:
+        def submit_job(self, **kwargs):
+            submitted.append(kwargs["jobName"])
+            return {"jobId": kwargs["jobName"]}
+
+    monkeypatch.setattr(handler.boto3, "client", lambda *a, **k: FakeBatch())
+    handler.lambda_handler({}, None)
+    assert "dunnes-ids" not in submitted
+    assert any(n.startswith("dunnes-scraper-chunk") for n in submitted)
