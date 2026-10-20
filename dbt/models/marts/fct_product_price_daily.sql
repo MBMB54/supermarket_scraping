@@ -6,7 +6,8 @@
     materialized='incremental',
     incremental_strategy='delete+insert',
     unique_key=['supermarket', 'id', 'scraped_date'],
-    full_refresh=false
+    full_refresh=false,
+    on_schema_change='append_new_columns'
 ) }}
 
 SELECT
@@ -18,6 +19,8 @@ SELECT
     price,
     was_price,
     unit_price,
+    unit_normalised,
+    price_per_unit_normalised,
     is_discount,
     is_promotion
 FROM {{ ref('fct_product_listings') }}

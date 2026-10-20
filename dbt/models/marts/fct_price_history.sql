@@ -1,6 +1,9 @@
 {#- Slowly-changing price history derived from the complete set of daily facts, so it is correct
     whatever order days were loaded in. A new version starts on the first scrape date where
-    price, was_price or unit_price differs from the previous scrape date. valid_to is the date the
+    price, was_price or unit_price differs from the previous scrape date.
+    unit_normalised and price_per_unit_normalised are attributes of a version, not part of the
+    change predicate: they derive from price and the unit logic, and replaying old days with newer
+    unit logic must not invent versions. valid_to is the date the
     next version starts (exclusive); NULL for the latest version (is_current).
 
     last_seen_date is the product's latest scrape date (the same on every version row). is_active
@@ -49,6 +52,8 @@ SELECT
     v.price::DOUBLE AS price,
     v.was_price::DOUBLE AS was_price,
     v.unit_price::DOUBLE AS unit_price,
+    v.unit_normalised::VARCHAR AS unit_normalised,
+    v.price_per_unit_normalised::DOUBLE AS price_per_unit_normalised,
     v.is_discount::BOOLEAN AS is_discount,
     v.is_promotion::BOOLEAN AS is_promotion,
     v.scraped_date::DATE AS valid_from,

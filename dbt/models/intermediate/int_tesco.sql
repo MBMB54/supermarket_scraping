@@ -13,7 +13,12 @@ normalised AS (
         CASE WHEN is_discount AND promotion_price IS NOT NULL
              THEN promotion_price ELSE price END AS effective_price,
         CASE WHEN is_discount AND promotion_price IS NOT NULL
-             THEN price ELSE NULL END AS original_price
+             THEN price ELSE NULL END AS original_price,
+        -- Tesco's raw unit price is always based on the regular price; rescale it when a price
+        -- cut applies so it matches the effective price (EUR 2.00 vs 2.75 -> 16.67 not 22.92 per l)
+        CASE WHEN is_discount AND promotion_price IS NOT NULL
+             THEN ROUND(unit_price * promotion_price / NULLIF(price, 0), 2)
+             ELSE unit_price END AS effective_unit_price
     FROM stg
 )
 
@@ -37,7 +42,7 @@ SELECT
     unit::VARCHAR AS unit,
     unit_qty_normalised::DOUBLE AS unit_qty_normalised,
     unit_normalised::VARCHAR AS unit_normalised,
-    unit_price::DOUBLE AS unit_price,
+    effective_unit_price::DOUBLE AS unit_price,
     {{ price_per_unit_normalised('effective_price', 'unit_qty_normalised', 'unit_normalised') }}::DOUBLE AS price_per_unit_normalised,
     promotion_description::VARCHAR AS promotion_description,
     promotion_type::VARCHAR AS promotion_type,

@@ -226,6 +226,10 @@ models:
         description: "{{ doc('col_was_price') }}"
       - name: unit_price
         description: "{{ doc('col_unit_price') }}"
+      - name: unit_normalised
+        description: "{{ doc('col_unit_normalised') }}"
+      - name: price_per_unit_normalised
+        description: "{{ doc('col_price_per_unit_normalised') }}"
       - name: is_discount
         description: "{{ doc('col_is_discount') }}"
       - name: is_promotion
@@ -269,6 +273,12 @@ models:
         data_type: double
       - name: unit_price
         description: "{{ doc('col_unit_price') }}"
+        data_type: double
+      - name: unit_normalised
+        description: "{{ doc('col_unit_normalised') }}"
+        data_type: varchar
+      - name: price_per_unit_normalised
+        description: "{{ doc('col_price_per_unit_normalised') }}"
         data_type: double
       - name: is_discount
         description: "{{ doc('col_is_discount') }}"

@@ -38,7 +38,7 @@
 
 {% docs col_unit_normalised %}Normalised unit: kg, l, m or each.{% enddocs %}
 
-{% docs col_unit_price %}Retailer-quoted price per unit of measure in EUR. NULL for Aldi, which has no usable value.{% enddocs %}
+{% docs col_unit_price %}Price per unit of measure (kg, l, ...) in EUR, consistent with the effective price: SuperValu and Dunnes quote it that way, and Tesco's regular-price-based figure is rescaled when a price cut applies. NULL for Aldi, which has no usable value.{% enddocs %}
 
 {% docs col_price_per_unit_normalised %}price divided by unit_qty_normalised: EUR per kg / l / m rounded to 2 dp, or EUR per item (unit_normalised = each) rounded to 4 dp so small per-item prices such as sheets are not rounded to zero.{% enddocs %}
 

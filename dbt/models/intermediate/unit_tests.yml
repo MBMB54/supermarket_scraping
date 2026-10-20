@@ -105,3 +105,16 @@ unit_tests:
         - {id: s2, unit_qty_normalised: 1.0, unit_normalised: each, price_per_unit_normalised: 3.0}
         - {id: s3, unit_qty_normalised: 1.0, unit_normalised: each, price_per_unit_normalised: 11.5}
         - {id: s4, unit_qty_normalised: 1.0, unit_normalised: each, price_per_unit_normalised: 1.0}
+
+  - name: int_tesco_unit_price_follows_price_cut
+    description: A price cut rescales the regular-price unit price to the effective price (El Yucateco 120 ml, 2.75 -> 2.00); a multibuy promotion leaves it unchanged.
+    model: int_tesco
+    given:
+      - input: ref('stg_tesco')
+        rows:
+          - {id: u1, supermarket: tesco, title: "El Yucateco Habanera 120 ml", quantity: 120, unit: ml, price: 2.75, promotion_price: 2.0, unit_price: 22.92, is_discount: true, is_promotion: false}
+          - {id: u2, supermarket: tesco, title: "Beans 400g", quantity: 400, unit: g, price: 1.0, promotion_price: 0.67, unit_price: 2.5, is_discount: false, is_promotion: true}
+    expect:
+      rows:
+        - {id: u1, price: 2.0, was_price: 2.75, unit_price: 16.67, price_per_unit_normalised: 16.67}
+        - {id: u2, price: 1.0, unit_price: 2.5, price_per_unit_normalised: 2.5}
