@@ -77,6 +77,11 @@ def _cell(value: object) -> str:
     return " ".join(str(value).split())
 
 
+diffusion_model = OpenRouterModel(
+    "inception/mercury-2.5-preview",
+    provider=OpenRouterProvider(api_key=open_router_key),
+)
+
 mimo_model = OpenRouterModel(
     "xiaomi/mimo-v2.5",
     provider=OpenRouterProvider(api_key=open_router_key),
@@ -615,6 +620,7 @@ app = agent.to_web(
         "DeepSeek V4 Flash": deepseek_model,
         "Qwen3.7 Flash": qwen_model,
         "GPT-5.6 Luna": openai_model,
+        "Mercury Diffusion": diffusion_model,
     },
     deps=deps,
 )
