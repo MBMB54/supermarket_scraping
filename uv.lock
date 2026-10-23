@@ -4535,6 +4535,7 @@ ml = [
     { name = "transformers" },
 ]
 ml-embed = [
+    { name = "aiohttp" },
     { name = "huggingface-hub" },
     { name = "pillow" },
     { name = "pyarrow" },
@@ -4561,6 +4562,9 @@ scraper = [
     { name = "playwright" },
 ]
 test = [
+    { name = "aiohttp" },
+    { name = "pillow" },
+    { name = "pyarrow" },
     { name = "pytest" },
 ]
 
@@ -4610,6 +4614,7 @@ ml = [
     { name = "transformers", specifier = ">=5.0.0" },
 ]
 ml-embed = [
+    { name = "aiohttp", specifier = ">=3.13.3" },
     { name = "huggingface-hub", specifier = ">=1.19.0" },
     { name = "pillow", specifier = ">=12.0.0" },
     { name = "pyarrow", specifier = ">=18.1.0" },
@@ -4635,7 +4640,12 @@ scraper = [
     { name = "patchright", specifier = ">=1.59.1" },
     { name = "playwright", specifier = ">=1.57.0" },
 ]
-test = [{ name = "pytest", specifier = ">=8.0" }]
+test = [
+    { name = "aiohttp", specifier = ">=3.13.3" },
+    { name = "pillow", specifier = ">=12.0.0" },
+    { name = "pyarrow", specifier = ">=18.1.0" },
+    { name = "pytest", specifier = ">=8.0" },
+]
 
 [[package]]
 name = "sympy"

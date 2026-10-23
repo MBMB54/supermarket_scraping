@@ -5,7 +5,7 @@ Read-only research. Nothing was created, uploaded or spent. Items I could not ve
 ## 1. Recommendation
 
 **Storage.** Use one private **HF bucket** (`brianbarry97/ie-supermarket-embeddings`) as the working store for derived artefacts, and keep S3 as the system of record for scraped and dbt data.
-- Images: one content-addressed file per image, `images/<sha256[:2]>/<sha256>.webp`. Re-runs skip files already present, and a dead URL never forces a re-download of 10 GB.
+- Images: one content-addressed file per image, `images/<sha256[:2]>/<sha256> (original bytes, no extension)`. Re-runs skip files already present, and a dead URL never forces a re-download of 10 GB.
 - Embeddings: one Parquet file per (model, task spec) with columns `id, content_hash, vector`. Dimensions are cheap to truncate when the model supports Matryoshka.
 - Keep the existing dataset repo `irish_supermarket_data` as a frozen, versioned snapshot only.
 - Buckets are mutable and unversioned with Xet chunk dedup, so a re-uploaded but unchanged file costs nothing. They are billed per TB, and egress is free.

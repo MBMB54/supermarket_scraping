@@ -1,5 +1,7 @@
 import io
 import posixpath
+from datetime import UTC, datetime
+from uuid import uuid4
 
 import polars as pl
 
@@ -63,3 +65,10 @@ class Storage:
         buf = io.BytesIO()
         df.write_parquet(buf)
         self.write_bytes(key, buf.getvalue())
+
+    def append_parquet(self, df: pl.DataFrame, prefix: str) -> str:
+        """Write `df` as a new `<prefix>/part-<utc>-<rand>.parquet`; existing parts are never touched."""
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+        key = f"{prefix}/part-{stamp}-{uuid4().hex[:8]}.parquet"
+        self.write_parquet(df, key)
+        return key

@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Literal
 
 from ml_common.keys import stable_hash
@@ -97,6 +97,30 @@ _GEMMA = {
 }
 _GEMMA_DOC = "title: none | text: "
 
+_GEMMA_IMAGE = (
+    EmbeddingSpec(
+        name="gemma2-image",
+        modality="image",
+        image_field="image_sha256",
+        dtype="bfloat16",
+        disabled_configs=("audio_config",),
+        batch_size=4,
+        **_GEMMA,
+    ),
+    EmbeddingSpec(
+        name="gemma2-image-text",
+        modality="image_text",
+        text_field="title_cleaned",
+        image_field="image_sha256",
+        prefix=_GEMMA_DOC,
+        dtype="bfloat16",
+        disabled_configs=("audio_config",),
+        batch_size=4,
+        **_GEMMA,
+    ),
+)
+IMAGE_TOKEN_VARIANTS = (140,)
+
 REGISTRY: dict[str, EmbeddingSpec] = {
     s.name: s
     for s in (
@@ -120,25 +144,11 @@ REGISTRY: dict[str, EmbeddingSpec] = {
             disabled_configs=("vision_config", "audio_config"),
             **_GEMMA,
         ),
-        EmbeddingSpec(
-            name="gemma2-image",
-            modality="image",
-            image_field="image_sha256",
-            dtype="bfloat16",
-            disabled_configs=("audio_config",),
-            batch_size=4,
-            **_GEMMA,
-        ),
-        EmbeddingSpec(
-            name="gemma2-image-text",
-            modality="image_text",
-            text_field="title_cleaned",
-            image_field="image_sha256",
-            prefix=_GEMMA_DOC,
-            dtype="bfloat16",
-            disabled_configs=("audio_config",),
-            batch_size=4,
-            **_GEMMA,
+        *_GEMMA_IMAGE,
+        *(
+            replace(spec, name=f"{spec.name}-t{tokens}", image_tokens=tokens)
+            for tokens in IMAGE_TOKEN_VARIANTS
+            for spec in _GEMMA_IMAGE
         ),
     )
 }

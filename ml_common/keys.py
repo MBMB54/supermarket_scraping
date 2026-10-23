@@ -1,6 +1,8 @@
 import hashlib
 import json
 
+IMAGE_PREFIX = "images"
+
 
 def content_key(data: str | bytes) -> str:
     raw = data.encode("utf-8") if isinstance(data, str) else data
@@ -13,7 +15,7 @@ def stable_hash(fields: dict) -> str:
 
 
 def image_key(sha256: str) -> str:
-    return f"images/{sha256[:2]}/{sha256}.webp"
+    return f"{IMAGE_PREFIX}/{sha256[:2]}/{sha256}"
 
 
 def input_key(modality: str, text: str | None, image_sha256: str | None) -> str:

@@ -8,6 +8,8 @@
 # ]
 # ///
 """
+SUPERSEDED by `python -m ml_common.cli.images` (fetch/seed); see docs/ml_framework.md.
+
 Download product images in-datacenter and write to HF dataset.
 Stores raw JPEG bytes — no re-encoding overhead.
 

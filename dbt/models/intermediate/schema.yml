@@ -739,7 +739,7 @@ models:
 
   - name: int_all_supermarket_products
     description: >
-      Slim id / title / title_cleaned extract of fct_product_listings (rows with a title only),
+      Slim id / title / title_cleaned / image_url extract of fct_product_listings (rows with a title only),
       written to Parquet under the parquet_output_prefix var for the embedding pipeline. Name predates
       the marts layer; it is an output, not an intermediate.
     columns:
@@ -751,6 +751,8 @@ models:
         description: "{{ doc('col_title') }}"
       - name: title_cleaned
         description: "{{ doc('col_title_cleaned') }}"
+      - name: image_url
+        description: "{{ doc('col_image_url') }}"
 
   - name: int_product_title_embeddings
     description: >

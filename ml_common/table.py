@@ -1,7 +1,6 @@
 import json
 from dataclasses import asdict
-from datetime import UTC, datetime
-from uuid import uuid4
+from datetime import datetime
 
 import polars as pl
 
@@ -94,7 +93,4 @@ def append_part(storage: Storage, spec: EmbeddingSpec, table: pl.DataFrame) -> s
     if not storage.exists(manifest):
         body = {"spec": asdict(spec) | {"spec_id": spec.spec_id}, "columns": table.columns}
         storage.write_bytes(manifest, json.dumps(body, indent=2).encode())
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-    key = f"{spec.table_prefix}/part-{stamp}-{uuid4().hex[:8]}.parquet"
-    storage.write_parquet(table, key)
-    return key
+    return storage.append_parquet(table, spec.table_prefix)

@@ -19,10 +19,11 @@ def main(argv: list[str] | None = None) -> None:
 
     logger = setup_logging("embed")
     spec = get_spec(args.spec)
+    storage = Storage(args.store)
     summary = run_embed(
         spec,
-        load_catalogue(args.catalogue, spec),
-        Storage(args.store),
+        load_catalogue(args.catalogue, spec, storage),
+        storage,
         SentenceTransformerEmbedder(spec),
         limit=args.limit,
         chunk_rows=cfg.chunk_rows,

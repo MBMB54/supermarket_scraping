@@ -63,8 +63,8 @@ def test_input_key_per_modality():
     assert input_key("image_text", "milk", "abc") != input_key("image_text", "milk", "abd")
 
 
-def test_image_key_is_sharded_by_prefix():
-    assert image_key("abcdef") == "images/ab/abcdef.webp"
+def test_image_key_is_sharded_by_prefix_without_extension():
+    assert image_key("abcdef") == "images/ab/abcdef"
 
 
 def test_stable_hash_ignores_field_order():
@@ -73,8 +73,16 @@ def test_stable_hash_ignores_field_order():
 
 def test_spec_id_is_stable_and_registry_ids_are_distinct():
     assert get_spec("gemma2-text").spec_id == get_spec("gemma2-text").spec_id
-    assert len(REGISTRY) == 4
-    assert len({s.spec_id for s in REGISTRY.values()}) == 4
+    assert len(REGISTRY) == 6
+    assert len({s.spec_id for s in REGISTRY.values()}) == 6
+
+
+def test_image_token_variants_differ_only_in_name_and_budget():
+    for base in ("gemma2-image", "gemma2-image-text"):
+        variant = get_spec(f"{base}-t140")
+        assert variant.image_tokens == 140 and get_spec(base).image_tokens is None
+        assert variant.spec_id != get_spec(base).spec_id
+        assert replace(variant, name=base, image_tokens=None) == get_spec(base)
 
 
 @pytest.mark.parametrize(
@@ -129,13 +137,14 @@ def test_storage_round_trip_and_listing(tmp_path):
 
 def test_load_catalogue_reads_only_spec_columns(tmp_path):
     catalogue().with_columns(extra=pl.lit(1)).write_parquet(tmp_path / "cat.parquet")
-    assert load_catalogue(str(tmp_path / "cat.parquet"), TEXT).columns == [
+    store = Storage(str(tmp_path / "store"))
+    assert load_catalogue(str(tmp_path / "cat.parquet"), TEXT, store).columns == [
         "id",
         "supermarket",
         "title_cleaned",
     ]
     with pytest.raises(FileNotFoundError):
-        load_catalogue(str(tmp_path / "missing.parquet"), TEXT)
+        load_catalogue(str(tmp_path / "missing.parquet"), TEXT, store)
 
 
 def run(store, spec, cat, embedder=None, **kw):
