@@ -9,6 +9,7 @@ dependencies = [
     "boto3>=1.0.0",
     "python-dotenv>=1.2.1",
     "polars>=1.37.1",
+    "fsspec>=2025.1.0",
     "tenacity>=8.0.0",
     "asttokens>=2.4.1",
 ]
@@ -58,10 +59,19 @@ ml = [
 ]
 
 agents = [
+ "duckdb>=1.4.3",
  "pydantic-ai>=2.8.0",
  "devtools>=0.12.2",
  "pydantic-ai-slim[web,web-fetch]>=2.8.0",
  "logfire>=4.15.0",
+]
+ml-embed = [
+    "sentence-transformers[image]>=6.1.0",  # embeddinggemma-2 needs interleaved dict input
+    "transformers>=5.18.0",
+    "huggingface-hub>=1.19.0",
+    "pillow>=12.0.0",
+    "s3fs>=2025.1.0",
+    "pyarrow>=18.1.0",
 ]
 dbt = [
     "dbt-core>=1.11.11",

@@ -70,7 +70,9 @@ async def fetch_all(urls: list[str | None]) -> list[bytes | None]:
                     else:
                         await asyncio.sleep(2**attempt)
 
-    async def fetch_with_progress(session: aiohttp.ClientSession, idx: int, url: str | None) -> None:
+    async def fetch_with_progress(
+        session: aiohttp.ClientSession, idx: int, url: str | None
+    ) -> None:
         await fetch(session, idx, url)
         pbar.update(1)
 

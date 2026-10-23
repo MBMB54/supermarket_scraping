@@ -12,6 +12,7 @@ Dependency groups:
 - `uv sync --group scraper` — adds aiohttp, playwright, patchright, curl-cffi
 - `uv sync --group ids` — lightweight ID scripts (no browser)
 - `uv sync --group notebook --group ml` — analysis and ML
+- `uv sync --group ml-embed` — slim embedding framework (`ml_common`): sentence-transformers, transformers, pillow, s3fs
 - `uv sync --group dbt` — dbt-core, dbt-duckdb
 - `uv sync --group dev` — ruff, pre-commit
 - `uv sync --group test` — pytest
@@ -54,7 +55,7 @@ Tesco, aldi, supervalu, and dunnes are all active in the Lambda orchestrator.
 
 ## dbt
 
-`dbt/` (project `dbt_ie_supermarket_analytics`, profile of the same name) transforms the raw scraped data using **dbt-duckdb** — DuckDB reads the gzipped JSONL directly from S3 via `httpfs`, no warehouse load step. The project runs on **dbt Fusion 2.0.6** (binary `~/.local/bin/dbt`, alias `dbtf`). With the repo venv active, plain `dbt` resolves to the dbt-core shim in `.venv/bin/dbt`, which crashes on Python 3.14 — use `dbtf` or the full path. See `dbt/README.md`.
+`dbt/` (project `dbt_ie_supermarket_analytics`, profile of the same name) transforms the raw scraped data using **dbt-duckdb** — DuckDB reads the gzipped JSONL directly from S3 via `httpfs`, no warehouse load step. The project runs on **dbt Fusion 2.0.9** (binary `~/.local/bin/dbt`, alias `dbtf`; embeds DuckDB v1.5.5, upgrade with `dbt system update`, previous binary kept in `~/supermarket_backups/dbt-bin/`). With the repo venv active, plain `dbt` resolves to the dbt-core shim in `.venv/bin/dbt`, which crashes on Python 3.14 — use `dbtf` or the full path. See `dbt/README.md`.
 
 **Running**: no `--static-analysis off` is needed; the project sets no `static_analysis` config and the default works (`--static-analysis strict` still fails on `list_filter(json_keys(...))`). Pass `--vars '{run_date: YYYY-MM-DD}'` — it selects the raw partition and sets `scraped_date`. The var `parquet_output_prefix` (default `s3://ie-supermarket-data/processed`) is where `int_all_supermarket_products` writes its Parquet; **override it with a local dir when testing** or the build overwrites the production file that `ml/embeddings.py` reads.
 
@@ -81,3 +82,14 @@ Generic tests (`unique`/`not_null` on each retailer's `id` column, plus `not_nul
 `scraper_common/` holds the code shared by the scraper scripts: `Storage` (S3 or `OUTPUT_DIR` local), `RunConfig`/`chunk_slice`, `request_with_retry`, `read_ids`/`run_ids_job` (guarded `ids/latest` overwrite), `run_scrape` (batching, checkpoints, data-quality gate, `_run_summary_chunk{N}.json`) and `Storefront` (SuperValu/Dunnes). Scripts add the repo root to `sys.path`; both Dockerfiles copy the package. Gate details: `docs/scraper_data_quality.md`. Tests: `uv run --group test pytest`.
 
 Before finishing a change to scrapers/infra, apply `docs/REVIEW.md` (or invoke the `code-reviewer` subagent in `.claude/agents/`). Alert infra drafts live in `infra/` (not applied automatically).
+
+## Embedding framework (`ml_common/`)
+
+Model-agnostic, incremental embeddings for the product catalogue. A frozen `EmbeddingSpec` (`specs.py`: pinned model revision, modality `text`/`image`/`image_text`, literal prompt prefix, normalisation, Matryoshka `dim`, dtype) defines a vector; `spec_id` is a hash of everything that changes the vectors and names its table. `diff.py` embeds only rows whose `(id, supermarket, content_key)` has no `ok` row for that spec, so changed titles/images re-embed and unchanged ones never do. `Storage` is one interface over a local dir, `s3://` or `hf://buckets/...`; `SentenceTransformerEmbedder` loads lazily and returns an error result (never a silent skip) for items it cannot decode. Registry: `harrier-title` (incumbent, dbt-compatible columns), `gemma2-text`, `gemma2-image`, `gemma2-image-text`. Full design: `docs/ml_framework.md`. Tests: `uv run --group test pytest tests/test_ml_common.py` (fake embedder, no network).
+
+```bash
+uv sync --group ml-embed
+uv run python -m ml_common.cli.embed --spec harrier-title --catalogue cat.parquet --store ./embedding_store --limit 50
+```
+
+Env: `EMBEDDINGS_STORE` (default `./embedding_store`), `CATALOGUE_URI` (default the dbt-written `processed/all_supermarket_products.parquet`), `CHUNK_ROWS`. Store layout: `embeddings/<spec_id>/{manifest.json,part-*.parquet}` (append-only, never rewritten) and `images/<sha256[:2]>/<sha256>.webp`. Image specs need an `image_sha256` catalogue column. The existing `processed/embeddings/<slug>/product_title_embeddings.parquet` that dbt and `ml/agents.py` read is still produced only by `ml/embeddings.py`.

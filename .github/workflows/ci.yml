@@ -15,6 +15,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --frozen --group dev --group test
-      - run: uv run ruff check . --extend-exclude ml
-      - run: uv run ruff format --check scraper_common tests aldi dunnes supervalu tesco lambda
+      - run: uv run ruff check . --extend-exclude notebooks
+      - run: uv run ruff format --check scraper_common ml_common ml tests aldi dunnes supervalu tesco lambda
       - run: uv run pytest -q

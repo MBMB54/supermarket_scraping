@@ -10,7 +10,7 @@ Transforms the scraped retailer data in S3 with dbt + DuckDB. Layers:
 
 ## Running dbt (Fusion)
 
-This project runs on **dbt Fusion** (`2.0.6`, binary at `~/.local/bin/dbt`). With the repo venv active,
+This project runs on **dbt Fusion** (`2.0.9`, binary at `~/.local/bin/dbt`, embeds DuckDB v1.5.5). With the repo venv active,
 `dbt` resolves to `.venv/bin/dbt` (the dbt-core shim), which crashes on Python 3.14 with a
 `mashumaro ... UnserializableField` traceback. Use the Fusion binary explicitly:
 
