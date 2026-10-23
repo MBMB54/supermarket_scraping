@@ -276,3 +276,37 @@ def test_pending_uses_only_ok_rows_of_matching_spec(tmp_path):
         {"id": ["a"], "supermarket": ["tesco"], "content_key": [content_key("title a")]}
     )
     assert pending(TEXT, cat, done)["id"].to_list() == ["b", "c"]
+
+
+def test_remote_write_retries_transient_failures(monkeypatch, tmp_path):
+    monkeypatch.setattr("ml_common.storage.time.sleep", lambda _: None)
+    storage = Storage("memory://retry-test")
+    calls = {"n": 0}
+    real_pipe = storage.fs.pipe_file
+
+    def flaky(path, body):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise ConnectionResetError("reset by peer")
+        real_pipe(path, body)
+
+    monkeypatch.setattr(storage.fs, "pipe_file", flaky)
+    storage.write_bytes("a/b.bin", b"x")
+    assert calls["n"] == 3
+    assert storage.read_bytes("a/b.bin") == b"x"
+
+
+def test_local_write_does_not_retry(tmp_path, monkeypatch):
+    storage = Storage(str(tmp_path))
+    calls = {"n": 0}
+
+    def boom(path, body):
+        calls["n"] += 1
+        raise OSError("disk full")
+
+    monkeypatch.setattr(storage.fs, "pipe_file", boom)
+    try:
+        storage.write_bytes("a.bin", b"x")
+    except OSError:
+        pass
+    assert calls["n"] == 1

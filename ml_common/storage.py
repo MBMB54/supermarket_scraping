@@ -1,11 +1,14 @@
 import io
 import posixpath
+import time
 from datetime import UTC, datetime
 from uuid import uuid4
 
 import polars as pl
 
 from scraper_common.config import REGION
+
+REMOTE_WRITE_ATTEMPTS = 4
 
 
 class Storage:
@@ -55,7 +58,17 @@ class Storage:
     def write_bytes(self, key: str, body: bytes) -> None:
         path = self._path(key)
         self.fs.makedirs(posixpath.dirname(path), exist_ok=True)
-        self.fs.pipe_file(path, body)
+        self._retry_remote(lambda: self.fs.pipe_file(path, body))
+
+    def _retry_remote(self, fn):
+        attempts = 1 if "://" not in self.root else REMOTE_WRITE_ATTEMPTS
+        for attempt in range(attempts):
+            try:
+                return fn()
+            except Exception:
+                if attempt == attempts - 1:
+                    raise
+                time.sleep(2 ** (attempt + 1))
 
     def read_parquet(self, key: str, columns: list[str] | None = None) -> pl.DataFrame:
         with self.fs.open(self._path(key), "rb") as f:
