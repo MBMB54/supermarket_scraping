@@ -8,7 +8,7 @@ import polars as pl
 
 from scraper_common.config import REGION
 
-REMOTE_WRITE_ATTEMPTS = 4
+REMOTE_WRITE_ATTEMPTS = 6
 
 
 class Storage:
