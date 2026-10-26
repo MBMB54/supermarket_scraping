@@ -43,17 +43,17 @@ class Storage:
         return f"{self.root}/{key}"
 
     def exists(self, key: str) -> bool:
-        return self.fs.exists(self._path(key))
+        return self._retry_remote(lambda: self.fs.exists(self._path(key)))
 
     def list(self, prefix: str) -> list[str]:
         path = self._path(prefix)
         if not self.fs.exists(path):
             return []
         base = posixpath.join(self._resolve()[1], "")
-        return sorted(p.removeprefix(base) for p in self.fs.find(path))
+        return sorted(p.removeprefix(base) for p in self._retry_remote(lambda: self.fs.find(path)))
 
     def read_bytes(self, key: str) -> bytes:
-        return self.fs.cat_file(self._path(key))
+        return self._retry_remote(lambda: self.fs.cat_file(self._path(key)))
 
     def write_bytes(self, key: str, body: bytes) -> None:
         path = self._path(key)
@@ -71,8 +71,11 @@ class Storage:
                 time.sleep(2 ** (attempt + 1))
 
     def read_parquet(self, key: str, columns: list[str] | None = None) -> pl.DataFrame:
-        with self.fs.open(self._path(key), "rb") as f:
-            return pl.read_parquet(f, columns=columns)
+        def read():
+            with self.fs.open(self._path(key), "rb") as f:
+                return pl.read_parquet(f, columns=columns)
+
+        return self._retry_remote(read)
 
     def write_parquet(self, df: pl.DataFrame, key: str) -> None:
         buf = io.BytesIO()

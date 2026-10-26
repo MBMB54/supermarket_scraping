@@ -310,3 +310,21 @@ def test_local_write_does_not_retry(tmp_path, monkeypatch):
     except OSError:
         pass
     assert calls["n"] == 1
+
+
+def test_remote_reads_retry_transient_failures(monkeypatch):
+    monkeypatch.setattr("ml_common.storage.time.sleep", lambda _: None)
+    storage = Storage("memory://retry-read-test")
+    storage.write_bytes("a/b.bin", b"x")
+    calls = {"n": 0}
+    real_cat = storage.fs.cat_file
+
+    def flaky(path):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise ConnectionResetError("reset by peer")
+        return real_cat(path)
+
+    monkeypatch.setattr(storage.fs, "cat_file", flaky)
+    assert storage.read_bytes("a/b.bin") == b"x"
+    assert calls["n"] == 3
