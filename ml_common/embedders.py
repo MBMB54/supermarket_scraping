@@ -108,6 +108,13 @@ class SentenceTransformerEmbedder:
         )
 
     def encode(self, inputs: list[EmbedInput]) -> list[EmbedResult]:
+        results: list[EmbedResult | None] = []
+        step = self.spec.batch_size
+        for start in range(0, len(inputs), step):
+            results.extend(self._encode_batch(inputs[start : start + step]))
+        return results
+
+    def _encode_batch(self, inputs: list[EmbedInput]) -> list[EmbedResult]:
         import numpy as np
         from PIL import Image
 

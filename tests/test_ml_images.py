@@ -5,6 +5,7 @@ import threading
 from dataclasses import replace
 from functools import partial
 
+import numpy as np
 import polars as pl
 import pytest
 from aiohttp import web
@@ -343,6 +344,25 @@ def test_embedder_sniffs_formats_from_extensionless_bytes():
         EmbedInput(text="milk", image=RED)
     )
     assert both["text"].endswith("milk <|image|>") and both["image"][0].size == (32, 32)
+
+
+def test_embedder_decodes_images_one_model_batch_at_a_time(monkeypatch):
+    spec = get_spec("gemma2-image")
+    embedder = SentenceTransformerEmbedder(spec)
+    batch_sizes = []
+
+    def fake_encode(payloads, prompt, normalize):
+        batch_sizes.append(len(payloads))
+        return np.ones((len(payloads), 4), dtype="float32")
+
+    monkeypatch.setattr(embedder, "_encode", fake_encode)
+    inputs = [EmbedInput(image=RED) for _ in range(10)]
+    inputs[3] = EmbedInput(image=b"not an image" * 20)
+    results = embedder.encode(inputs)
+    assert batch_sizes == [3, 4, 2]
+    assert len(results) == 10
+    assert results[3].error is not None
+    assert all(r.error is None for i, r in enumerate(results) if i != 3)
 
 
 def test_inspect_image_reports_sniffed_type_and_rejects_bad_payloads():
