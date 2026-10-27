@@ -391,9 +391,9 @@ State as updated late on 2026-10-27 (the rollout is in progress; re-run the chec
 | S3 lifecycle rules | **Applied** (`infra/dbt/s3_lifecycle.json`: raw and landing to Glacier IR, noncurrent versions expire after 14 days (3 for `processed/`), delete markers and multipart uploads cleaned, catalog archive expires after 8 days) | `aws s3api get-bucket-lifecycle-configuration` |
 | Raw compaction | **Done** for every day up to 2026-10-25 (four Batch jobs, one per retailer, all exited 0): each `raw/{retailer}/{date}/` now holds the `_run_summary_chunk*.json` files plus one `compacted.jsonl.gz` (about 540 objects became about 6 per retailer-day). The originals are noncurrent versions, recoverable until the 14-day rule removes them (about 2026-11-10). A compacted day (2026-10-22) rebuilt through the shadow job matched the local database exactly | `aws s3 ls s3://ie-supermarket-data/raw/tesco/2026-10-22/` |
 
-The first manual run of the first image failed at one dbt test because the fixture files had never been committed (the root `.gitignore` excludes `*.jsonl`); `780ecb7` fixed that. The scheduled slots themselves have not fired yet (the first full day of slots is 2026-10-28), so the Scheduler `Input` format is still unproven. The plan's **rollout order** (shadow week, then cutover after `seed_lake.py`; the compaction backfill and lifecycle rules are done) is in [dbt_orchestration_plan.md](dbt_orchestration_plan.md).
+The first manual run of the first image failed at one dbt test because the fixture files had never been committed (the root `.gitignore` excludes `*.jsonl`); `780ecb7` fixed that. The plan's **rollout order** (shadow week, then cutover after `seed_lake.py`; the compaction backfill and lifecycle rules are done) is in [dbt_orchestration_plan.md](dbt_orchestration_plan.md).
 
-Unverified until the first slot fires: the key casing of the Scheduler `Input` JSON for `batch:submitJob` (the template uses PascalCase `JobName`, `JobQueue`, ...). A run triggered by hand with `aws batch submit-job` does not test this.
+The Scheduler `Input` format is now verified: the 14:30 UTC slot on 2026-10-27 fired by itself, passed `SCHEDULED_TIME`, and the job built all four retailers for that day (`dbt OK`). The 11:30, 12:30 and 13:30 slots did not exist yet that day (the schedule was enabled at about 14:20).
 
 ### 5.9 CI/CD
 
