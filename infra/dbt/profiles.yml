@@ -3,9 +3,16 @@ dbt_ie_supermarket_analytics:
   outputs:
     batch:
       type: duckdb
-      path: "{{ env_var('DBT_DUCKDB_PATH', '/tmp/supermarket_data.duckdb') }}"
+      # In-memory main DB: staging/intermediate views and seeds are rebuilt every run. Only the marts
+      # (dbt_project.yml: +database: lake for target `batch`) persist, in the DuckLake catalog.
+      path: ":memory:"
       threads: 2
-      extensions: [httpfs, parquet, aws]
+      extensions: [httpfs, parquet, aws, ducklake]
+      attach:
+        - path: "ducklake:{{ env_var('LAKE_CATALOG', '/tmp/catalog.ducklake') }}"
+          alias: lake
+          options:
+            data_path: "{{ env_var('LAKE_DATA', 's3://ie-supermarket-data/ducklake/') }}"
       secrets:
         - type: s3
           provider: credential_chain

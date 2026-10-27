@@ -1,0 +1,10 @@
+# BuildKit uses this instead of the repo-root .dockerignore (which hides dbt/, infra/ and *.txt
+# for the scraper image) when building infra/dbt/Dockerfile.dbt.
+*
+!scraper_common/
+!dbt/
+!infra/dbt/
+dbt/target
+dbt/logs
+dbt/dbt_packages
+**/__pycache__

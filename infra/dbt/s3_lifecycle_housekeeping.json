@@ -1,0 +1,54 @@
+{
+  "Rules": [
+    {
+      "ID": "expire-catalog-archive",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "dbt/state/archive/"
+      },
+      "Expiration": {
+        "Days": 8
+      }
+    },
+    {
+      "ID": "noncurrent-expire-14d",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": ""
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 14
+      }
+    },
+    {
+      "ID": "noncurrent-expire-processed-3d",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "processed/"
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 3
+      }
+    },
+    {
+      "ID": "clean-expired-delete-markers",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": ""
+      },
+      "Expiration": {
+        "ExpiredObjectDeleteMarker": true
+      }
+    },
+    {
+      "ID": "abort-incomplete-multipart",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": ""
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+      }
+    }
+  ]
+}
