@@ -27,9 +27,15 @@ works. `--static-analysis strict` still fails on `list_filter(json_keys(...))` (
 
 ## Vars
 
-- `run_date` (YYYY-MM-DD): raw partition read (`raw/{retailer}/{run_date}/`) and the `scraped_date` stamped on rows. Defaults to today (UTC). Pass it explicitly for any scheduled or backfill run.
+- `run_date` (YYYY-MM-DD): raw partition read (`raw/{retailer}/{run_date}/`) and the `scraped_date` stamped on rows. Defaults to today (UTC) when omitted; always pass it for scheduled, backfill or rerun builds, since a rerun after midnight UTC would otherwise read the wrong day.
+- `use_landing` (default false): read the one-file Parquet copy `{landing_prefix}/{retailer}/scraped_date={run_date}/data.parquet` that `infra/dbt/landing.py` writes, instead of the raw gzipped JSONL. The Batch job sets it; local runs and `scripts/backfill.py` read raw. `landing_prefix` defaults to `s3://ie-supermarket-data/landing`.
+- `retailers` (default all four): retailers built this run. Models and tests that span retailers loop over it; the scheduled job narrows it on a degraded day (and lowers `listing_min_rows`, default 30000), and backfills pass only retailers with a raw partition.
 - `parquet_output_prefix`: where dbt writes Parquet (default `s3://ie-supermarket-data/processed`); override to test.
 - `embeddings_input_prefix`: where dbt reads embeddings (default same prefix).
+
+## Batch target (DuckLake)
+
+`infra/dbt/profiles.yml` target `batch` (used by the scheduled AWS Batch job, dbt-core + dbt-duckdb) runs with an in-memory main database and attaches a DuckLake catalog as `lake`; the marts (`+database: lake`, set only when `target.name == 'batch'`) are the only persisted tables, so the price history is Parquet under `s3://ie-supermarket-data/ducklake/` plus a small catalog file. Local `dev`/`prod` targets still keep everything in `supermarket_data.db`. DuckLake cannot enforce primary keys, so `fct_product_listings` relies on its `unique_combination` test. The job excludes `test_type:unit` (three unit tests differ under dbt-core; run them locally with Fusion) and pins `duckdb<2` because DuckDB 2.0 rejects the `x -> ...` lambda syntax. See `docs/dbt_orchestration_plan.md`.
 
 ## Raw source reads
 

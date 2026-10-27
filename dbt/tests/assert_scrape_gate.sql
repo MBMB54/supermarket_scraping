@@ -2,13 +2,10 @@
 -- partition breaches the scraper's own limits (error rate 20%, empty payload 5%, not-found 60%,
 -- Dunnes 85%). Keep these numbers in sync with the scraper's MAX_*_RATE defaults.
 WITH raw AS (
-    SELECT 'aldi' AS retailer, CAST(error AS VARCHAR) AS error, data IS NULL AS no_data FROM {{ source('external_source', 'aldi') }}
-    UNION ALL
-    SELECT 'tesco', CAST(error AS VARCHAR), data IS NULL FROM {{ source('external_source', 'tesco') }}
-    UNION ALL
-    SELECT 'dunnes', CAST(error AS VARCHAR), data IS NULL FROM {{ source('external_source', 'dunnes') }}
-    UNION ALL
-    SELECT 'supervalu', CAST(error AS VARCHAR), data IS NULL FROM {{ source('external_source', 'supervalu') }}
+    {%- for retailer in var('retailers') %}
+    SELECT '{{ retailer }}'{{ ' AS retailer' if loop.first }}, CAST(error AS VARCHAR){{ ' AS error' if loop.first }}, data IS NULL{{ ' AS no_data' if loop.first }} FROM {{ source('external_source', retailer) }}
+    {{ 'UNION ALL' if not loop.last }}
+    {%- endfor %}
 ),
 
 agg AS (

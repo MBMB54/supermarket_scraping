@@ -2,7 +2,7 @@
     their contracts), so a positional UNION ALL is safe. -#}
 {#- var retailers lets a historical backfill build only the retailers that have a raw partition
     for that date (reading a missing partition is an error). -#}
-{% set retailers = var('retailers', ['tesco', 'dunnes', 'supervalu', 'aldi']) %}
+{% set retailers = var('retailers') %}
 
 WITH unioned AS (
 {% for retailer in retailers %}

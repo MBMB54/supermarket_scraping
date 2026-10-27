@@ -1,10 +1,10 @@
--- fct_product_listings must contain exactly the rows of the four retailer models.
+-- fct_product_listings must contain exactly the rows of the retailer models built this run
+-- (var retailers; all four on a normal day).
 WITH expected AS (
     SELECT
-        (SELECT count(*) FROM {{ ref('int_tesco') }})
-        + (SELECT count(*) FROM {{ ref('int_dunnes') }})
-        + (SELECT count(*) FROM {{ ref('int_supervalu') }})
-        + (SELECT count(*) FROM {{ ref('int_aldi') }}) AS n
+{%- for retailer in var('retailers') %}
+        {{ '+ ' if not loop.first }}(SELECT count(*) FROM {{ ref('int_' ~ retailer) }})
+{%- endfor %} AS n
 ),
 
 actual AS (

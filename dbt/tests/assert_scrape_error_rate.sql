@@ -1,17 +1,14 @@
 -- Early-warning monitor on the raw scrape (warn only). Thresholds mirror the scraper gate in
 -- docs/scraper_data_quality.md; this fires at a quarter of the gate's error limit so a trend is
--- visible before the Batch job itself fails. Scans four raw partitions: run on the daily build.
+-- visible before the Batch job itself fails. Scans one raw partition per retailer in var retailers: run on the daily build.
 {{ config(severity = 'warn') }}
 
 WITH raw AS (
     -- error can be inferred as JSON for some retailers; cast so string comparisons work
-    SELECT 'aldi' AS retailer, CAST(error AS VARCHAR) AS error, data IS NULL AS no_data FROM {{ source('external_source', 'aldi') }}
-    UNION ALL
-    SELECT 'tesco', CAST(error AS VARCHAR), data IS NULL FROM {{ source('external_source', 'tesco') }}
-    UNION ALL
-    SELECT 'dunnes', CAST(error AS VARCHAR), data IS NULL FROM {{ source('external_source', 'dunnes') }}
-    UNION ALL
-    SELECT 'supervalu', CAST(error AS VARCHAR), data IS NULL FROM {{ source('external_source', 'supervalu') }}
+    {%- for retailer in var('retailers') %}
+    SELECT '{{ retailer }}'{{ ' AS retailer' if loop.first }}, CAST(error AS VARCHAR){{ ' AS error' if loop.first }}, data IS NULL{{ ' AS no_data' if loop.first }} FROM {{ source('external_source', retailer) }}
+    {{ 'UNION ALL' if not loop.last }}
+    {%- endfor %}
 ),
 
 agg AS (

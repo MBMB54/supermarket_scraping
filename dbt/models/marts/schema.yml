@@ -7,14 +7,12 @@ models:
     config:
       contract:
         enforced: true
-    constraints:
-      - type: primary_key
-        columns: [supermarket, id]
-        warn_unenforced: false
+    # No primary_key constraint: DuckLake (the Batch target's catalog) cannot enforce one, so
+    # uniqueness is guaranteed by the unique_combination test below.
     data_tests:
       - min_row_count:
           arguments:
-            min_rows: 30000
+            min_rows: "{{ var('listing_min_rows') }}"
       - unique_combination:
           arguments:
             columns: [supermarket, id]

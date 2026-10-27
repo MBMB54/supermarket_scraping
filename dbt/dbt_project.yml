@@ -14,8 +14,9 @@ clean-targets:
   - "dbt_packages"
 
 vars:
-  # run_date (YYYY-MM-DD) selects the raw partition; pass it via --vars. When omitted the sources
-  # fall back to today's UTC date (see models/staging/raw_s3.yml).
+  # run_date (YYYY-MM-DD, --vars '{run_date: ...}') selects the raw partition and sets scraped_date.
+  # When omitted it defaults to today's UTC date (the scrapers' folder name); scheduled and backfill
+  # runs always pass it explicitly.
   # S3 prefix (or local dir) that dbt WRITES Parquet outputs to: today only
   # int_all_supermarket_products -> {prefix}/all_supermarket_products.parquet, which
   # ml/embeddings.py reads (it hardcodes processed/all_supermarket_products.parquet, not this var).
@@ -23,7 +24,17 @@ vars:
   # Days a product may go unseen and still count as active in fct_price_history, per retailer
   # (measured from the backfill: docs in README). Unlisted retailers use default.
   active_grace_days: {default: 2, tesco: 2, aldi: 2, dunnes: 8, supervalu: 8}
+  # Retailers built this run. The scheduled job narrows it to the retailers whose scrape is complete
+  # and passed its gate (a degraded day), and backfills pass only those with a raw partition. Models
+  # and tests that span retailers loop over it, so a missing retailer is skipped, not an error.
+  retailers: [tesco, dunnes, supervalu, aldi]
+  # Floor for fct_product_listings rows; the scheduled job lowers it on a degraded day to the sum of
+  # the missing-retailer-adjusted source minimums (models/staging/raw_s3.yml).
+  listing_min_rows: 30000
   parquet_output_prefix: "s3://ie-supermarket-data/processed"
+  # Where infra/dbt/landing.py writes {landing_prefix}/{retailer}/scraped_date={run_date}/data.parquet;
+  # read only when --vars '{use_landing: true}' (the Batch job).
+  landing_prefix: "s3://ie-supermarket-data/landing"
   # Prefix dbt READS embeddings from ({prefix}/embeddings/{embedding_model}/...), written by ml/embeddings.py.
   embeddings_input_prefix: "s3://ie-supermarket-data/processed"
 
@@ -35,6 +46,10 @@ models:
       +materialized: view
     marts:
       +materialized: table
+      # The scheduled Batch job (target `batch`) keeps the marts, i.e. the price history, in the
+      # DuckLake catalog attached as `lake`; staging/intermediate stay in the in-memory main DB.
+      # Local targets keep everything in their single DuckDB file.
+      +database: "{{ 'lake' if target.name == 'batch' else target.database }}"
 
 flags:
   require_generic_test_arguments_property: true

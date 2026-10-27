@@ -11,7 +11,11 @@ sources:
         # union_by_name infers the schema per file and merges it. Plain auto-detection samples one schema for
         # the whole glob, so a new key in a free-form object (data.attributes tags such as
         # "back To School") breaks the read of any later file.
-        external_location: "read_json('s3://ie-supermarket-data/raw/{name}/{{ run_date() | trim }}/*.jsonl.gz', union_by_name=true)"
+        #
+        # use_landing (the Batch job sets it) reads the one-file Parquet copy that
+        # infra/dbt/landing.py wrote from the same read_json call; local runs and backfills
+        # default to the raw files. run_date defaults to today UTC (see macros/run_date.sql).
+        external_location: "{{ \"read_parquet('\" ~ var('landing_prefix') ~ \"/{name}/scraped_date=\" ~ var('run_date', run_started_at.strftime('%Y-%m-%d')) ~ \"/*.parquet')\" if var('use_landing', false) else \"read_json('s3://ie-supermarket-data/raw/{name}/\" ~ var('run_date', run_started_at.strftime('%Y-%m-%d')) ~ \"/*.jsonl.gz', union_by_name=true)\" }}"
     tables:
       - name: aldi
         description: Aldi API responses, one record per sku requested.
