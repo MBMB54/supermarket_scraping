@@ -22,3 +22,5 @@ __pycache__/
 .vscode
 .dbt
 dbt/models/example/
+# dbt test fixtures are tiny sample inputs, not scraped data
+!dbt/tests/fixtures/**/*.jsonl
