@@ -141,9 +141,10 @@ jobs:
             echo "$name not deployed yet; skipping"
             continue
           fi
+          # .tags: CloudFormation adds aws:* tags, which RegisterJobDefinition rejects
           jq --arg IMAGE_URI "$DBT_IMAGE" '
             .containerProperties.image = $IMAGE_URI |
-            del(.jobDefinitionArn, .revision, .status, .containerOrchestrationType)
+            del(.jobDefinitionArn, .revision, .status, .containerOrchestrationType, .tags)
           ' job-def.json > new-job-def.json
           aws batch register-job-definition --cli-input-json file://new-job-def.json
         done
