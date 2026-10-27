@@ -99,3 +99,51 @@ jobs:
           del(.jobDefinitionArn, .revision, .status, .containerOrchestrationType)
         ' job-def.json > new-job-def.json
         aws batch register-job-definition --cli-input-json file://new-job-def.json
+
+  build-dbt-image:
+    name: Build and push dbt image
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build and push dbt image
+      id: build-dbt
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: dbt-${{ github.sha }}
+      run: |
+        # BuildKit (default here) picks up infra/dbt/Dockerfile.dbt.dockerignore
+        docker build -f infra/dbt/Dockerfile.dbt -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+    - name: Update Batch job definitions — dbt image (once infra/dbt-batch.yaml is deployed)
+      env:
+        DBT_IMAGE: ${{ steps.build-dbt.outputs.image }}
+      run: |
+        for name in ie_supermarket_dbt_job_definition ie_supermarket_compact_job_definition; do
+          aws batch describe-job-definitions --job-definition-name $name --status ACTIVE \
+            --query 'max_by(jobDefinitions, &revision)' > job-def.json
+          if [ "$(cat job-def.json)" = "null" ] || [ ! -s job-def.json ]; then
+            echo "$name not deployed yet; skipping"
+            continue
+          fi
+          jq --arg IMAGE_URI "$DBT_IMAGE" '
+            .containerProperties.image = $IMAGE_URI |
+            del(.jobDefinitionArn, .revision, .status, .containerOrchestrationType)
+          ' job-def.json > new-job-def.json
+          aws batch register-job-definition --cli-input-json file://new-job-def.json
+        done

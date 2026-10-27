@@ -46,3 +46,16 @@ aws cloudformation delete-stack --stack-name supermarket-scraper-alerts
 - The Batch job definition `retryStrategy` only retries Spot interruptions, so a gate failure is not
   retried; that is intended (the checkpoint is kept for a manual re-run).
 - The local AWS CLI profile is the account root user; create a scoped IAM user/role for day-to-day use.
+
+
+# dbt Batch job (drafted, not applied)
+
+`dbt-batch.yaml` defines the dbt and raw-compaction Batch job definitions, the dbt job role, and the
+EventBridge Scheduler slots; `iam/dbt-job-role-policy.json` is the same policy standalone and
+`dbt/s3_lifecycle.json` the Glacier Instant Retrieval rules. Order of operations, including the rule
+that the lifecycle file is applied only after the historical raw compaction, is in
+`docs/dbt_orchestration_plan.md`.
+
+```bash
+aws cloudformation validate-template --template-body file://infra/dbt-batch.yaml
+```

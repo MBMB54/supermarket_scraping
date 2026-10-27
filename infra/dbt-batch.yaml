@@ -1,0 +1,185 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Daily dbt build and raw compaction as AWS Batch Fargate jobs, triggered by EventBridge Scheduler.
+  Draft: validated with `aws cloudformation validate-template` only, not deployed. See
+  docs/dbt_orchestration_plan.md. The alert topic comes from batch-alerts.yaml.
+
+Parameters:
+  Image:
+    Type: String
+    Description: ECR URI of the image built from infra/dbt/Dockerfile.dbt
+  JobQueueArn:
+    Type: String
+  ExecutionRoleArn:
+    Type: String
+    Description: ECS task execution role the scraper job definitions already use
+  ScraperJobRoleArn:
+    Type: String
+    Description: >
+      supermarket-batch-job-role (infra/iam/batch-job-role-policy.json): raw/* read, write, delete.
+      The compaction job reuses it instead of a new role.
+  AlertTopicArn:
+    Type: String
+  Bucket:
+    Type: String
+    Default: ie-supermarket-data
+  DbtScheduleState:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [ENABLED, DISABLED]
+    Description: Deploys DISABLED. Enable for the shadow week (with shadow prefixes) and at cutover (after seed_lake.py).
+  CompactScheduleState:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [ENABLED, DISABLED]
+    Description: Deploys DISABLED. Enable only after the historical backfill has been run and reviewed by hand.
+  StatePrefix:
+    Type: String
+    Default: dbt/state
+    Description: "Production default. Shadow week: dbt/state-shadow (with the two parameters below)."
+  LakeData:
+    Type: String
+    Default: s3://ie-supermarket-data/ducklake/
+    Description: "Shadow week: s3://ie-supermarket-data/ducklake-shadow/ (never a path under ducklake/)."
+  ProcessedPrefix:
+    Type: String
+    Default: s3://ie-supermarket-data/processed
+    Description: "Shadow week: s3://ie-supermarket-data/processed-shadow (production feeds ml/embeddings.py)."
+
+Resources:
+  DbtJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: supermarket-dbt-job-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - {Effect: Allow, Principal: {Service: ecs-tasks.amazonaws.com}, Action: "sts:AssumeRole"}
+      Policies:
+        - PolicyName: dbt-job
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - {Effect: Allow, Action: "s3:GetObject", Resource: !Sub "arn:aws:s3:::${Bucket}/raw/*"}
+              - Effect: Allow
+                Action: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+                Resource:
+                  - !Sub "arn:aws:s3:::${Bucket}/landing/*"
+                  - !Sub "arn:aws:s3:::${Bucket}/ducklake/*"
+                  - !Sub "arn:aws:s3:::${Bucket}/dbt/*"
+                  - !Sub "arn:aws:s3:::${Bucket}/processed/*"
+                  - !Sub "arn:aws:s3:::${Bucket}/ducklake-shadow/*"
+                  - !Sub "arn:aws:s3:::${Bucket}/processed-shadow/*"
+              - Effect: Allow
+                Action: "s3:ListBucket"
+                Resource: !Sub "arn:aws:s3:::${Bucket}"
+                Condition:
+                  StringLike:
+                    "s3:prefix": ["raw/*", "landing/*", "ducklake/*", "dbt/*", "processed/*", "ducklake-shadow/*", "processed-shadow/*"]
+              - {Effect: Allow, Action: "sns:Publish", Resource: !Ref AlertTopicArn}
+
+  DbtJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      JobDefinitionName: ie_supermarket_dbt_job_definition
+      Type: container
+      PlatformCapabilities: [FARGATE]
+      Timeout: {AttemptDurationSeconds: 3600}
+      RetryStrategy: {Attempts: 1}  # retries come from the scheduler slots, not Batch (no delay)
+      ContainerProperties:
+        Image: !Ref Image
+        Command: ["python", "infra/dbt/run_dbt.py"]
+        ExecutionRoleArn: !Ref ExecutionRoleArn
+        JobRoleArn: !GetAtt DbtJobRole.Arn
+        ResourceRequirements:
+          - {Type: VCPU, Value: "2"}
+          - {Type: MEMORY, Value: "4096"}
+        NetworkConfiguration: {AssignPublicIp: ENABLED}
+        # The image is built for x86_64; on Apple Silicon build with --platform linux/amd64.
+        RuntimePlatform: {CpuArchitecture: X86_64, OperatingSystemFamily: LINUX}
+        Environment:
+          - {Name: S3_BUCKET, Value: !Ref Bucket}
+          - {Name: SNS_TOPIC_ARN, Value: !Ref AlertTopicArn}
+          - {Name: STATE_PREFIX, Value: !Ref StatePrefix}
+          - {Name: LAKE_DATA, Value: !Ref LakeData}
+          - {Name: PROCESSED_PREFIX, Value: !Ref ProcessedPrefix}
+
+  CompactJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      JobDefinitionName: ie_supermarket_compact_job_definition
+      Type: container
+      PlatformCapabilities: [FARGATE]
+      Timeout: {AttemptDurationSeconds: 3600}
+      RetryStrategy: {Attempts: 1}
+      ContainerProperties:
+        Image: !Ref Image
+        Command: ["sh", "-c", "python infra/dbt/compact_raw.py --run-date $(date -u +%F) --max-age-days 7"]
+        ExecutionRoleArn: !Ref ExecutionRoleArn
+        JobRoleArn: !Ref ScraperJobRoleArn
+        ResourceRequirements:
+          - {Type: VCPU, Value: "0.5"}
+          - {Type: MEMORY, Value: "2048"}
+        NetworkConfiguration: {AssignPublicIp: ENABLED}
+        # The image is built for x86_64; on Apple Silicon build with --platform linux/amd64.
+        RuntimePlatform: {CpuArchitecture: X86_64, OperatingSystemFamily: LINUX}
+        Environment:
+          - {Name: S3_BUCKET, Value: !Ref Bucket}
+
+  SchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - {Effect: Allow, Principal: {Service: scheduler.amazonaws.com}, Action: "sts:AssumeRole"}
+      Policies:
+        - PolicyName: submit-batch
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: "batch:SubmitJob"
+                Resource:
+                  - !Ref JobQueueArn
+                  # by name, so the schedules always use the newest ACTIVE revision (aws.yml registers
+                  # a new revision with each pushed image)
+                  - !Sub "arn:aws:batch:${AWS::Region}:${AWS::AccountId}:job-definition/ie_supermarket_dbt_job_definition*"
+                  - !Sub "arn:aws:batch:${AWS::Region}:${AWS::AccountId}:job-definition/ie_supermarket_compact_job_definition*"
+
+  # Four slots a day (11:30-14:30 UTC; scrapes start ~08:00 and Tesco ends ~11:00). Each slot is a
+  # no-op if the date is already built or the scrapes are unfinished; the 14:30 slot alerts.
+  DbtSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: supermarket-dbt-daily
+      State: !Ref DbtScheduleState
+      ScheduleExpression: "cron(30 11-14 * * ? *)"
+      FlexibleTimeWindow: {Mode: "OFF"}
+      Target:
+        Arn: "arn:aws:scheduler:::aws-sdk:batch:submitJob"
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: !Sub
+          # Key casing (PascalCase for the SDK universal target) is unverified until a slot fires.
+          - |
+            {"JobName": "dbt-daily", "JobQueue": "${Queue}", "JobDefinition": "${Def}",
+             "ContainerOverrides": {"Environment": [
+               {"Name": "SCHEDULED_TIME", "Value": "<aws.scheduler.scheduled-time>"}]}}
+          - {Queue: !Ref JobQueueArn, Def: ie_supermarket_dbt_job_definition}
+
+  # Compaction after the last dbt slot: only dates 2-7 days old (--min-age-days default, --max-age-days),
+  # so enabling it can never start the historical backfill; that is a deliberate manual run.
+  CompactSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: supermarket-raw-compaction-daily
+      State: !Ref CompactScheduleState
+      ScheduleExpression: "cron(30 15 * * ? *)"
+      FlexibleTimeWindow: {Mode: "OFF"}
+      Target:
+        Arn: "arn:aws:scheduler:::aws-sdk:batch:submitJob"
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: !Sub
+          - |
+            {"JobName": "raw-compaction", "JobQueue": "${Queue}", "JobDefinition": "${Def}"}
+          - {Queue: !Ref JobQueueArn, Def: ie_supermarket_compact_job_definition}

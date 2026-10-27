@@ -1,0 +1,53 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadRaw",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::ie-supermarket-data/raw/*"
+    },
+    {
+      "Sid": "ReadWriteDbtState",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::ie-supermarket-data/landing/*",
+        "arn:aws:s3:::ie-supermarket-data/ducklake/*",
+        "arn:aws:s3:::ie-supermarket-data/dbt/*",
+        "arn:aws:s3:::ie-supermarket-data/processed/*",
+        "arn:aws:s3:::ie-supermarket-data/ducklake-shadow/*",
+        "arn:aws:s3:::ie-supermarket-data/processed-shadow/*"
+      ]
+    },
+    {
+      "Sid": "List",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::ie-supermarket-data",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "raw/*",
+            "landing/*",
+            "ducklake/*",
+            "dbt/*",
+            "processed/*",
+            "ducklake-shadow/*",
+            "processed-shadow/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "Alert",
+      "Effect": "Allow",
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:eu-west-1:557690579730:supermarket-scraper-alerts"
+    }
+  ]
+}
