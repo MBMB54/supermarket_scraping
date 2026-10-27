@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import gzip
 import json
 import logging
@@ -60,6 +62,51 @@ class Storage:
             (self.output_dir / key).unlink(missing_ok=True)
         else:
             self.s3.delete_object(Bucket=self.bucket, Key=key)
+
+    def put_if_absent(self, key: str, body: bytes) -> bool:
+        """Create `key` only if it does not exist yet; False when it already does (a lock)."""
+        if self.output_dir:
+            path = self.output_dir / key
+            path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with path.open("xb") as f:
+                    f.write(body)
+            except FileExistsError:
+                return False
+            return True
+        try:
+            self.s3.put_object(Bucket=self.bucket, Key=key, Body=body, IfNoneMatch="*")
+        except ClientError as e:
+            if e.response["Error"]["Code"] in ("PreconditionFailed", "ConditionalRequestConflict"):
+                return False
+            raise
+        return True
+
+    def list_keys(self, prefix: str) -> list[tuple[str, int]]:
+        """(key, size in bytes) of every object under `prefix`, sorted by key."""
+        if self.output_dir:
+            root = self.output_dir
+            found = [(str(p.relative_to(root)), p.stat().st_size) for p in root.rglob("*")]
+            return sorted((k, n) for k, n in found if k.startswith(prefix) and (root / k).is_file())
+        keys = []
+        for page in self.s3.get_paginator("list_objects_v2").paginate(
+            Bucket=self.bucket, Prefix=prefix
+        ):
+            keys += [(o["Key"], o["Size"]) for o in page.get("Contents", [])]
+        return keys
+
+    def delete_many(self, keys: list[str]) -> None:
+        if self.output_dir:
+            for key in keys:
+                self.delete(key)
+            return
+        for i in range(0, len(keys), 1000):
+            resp = self.s3.delete_objects(
+                Bucket=self.bucket,
+                Delete={"Objects": [{"Key": k} for k in keys[i : i + 1000]], "Quiet": True},
+            )
+            if resp.get("Errors"):
+                raise RuntimeError(f"S3 delete failed: {resp['Errors'][:3]}")
 
     def put_json(self, key: str, obj: dict) -> None:
         self.put_bytes(key, json.dumps(obj).encode(), "application/json")
