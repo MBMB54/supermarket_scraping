@@ -384,14 +384,14 @@ State as updated late on 2026-10-27 (the rollout is in progress; re-run the chec
 | Stack parameters | `StatePrefix=dbt/state-shadow`, `LakeData=s3://ie-supermarket-data/ducklake-shadow/`, `ProcessedPrefix=s3://ie-supermarket-data/processed-shadow`, `ExecutionRoleArn` and `ScraperJobRoleArn` = `aws_batch_2` | same command |
 | Job definitions `ie_supermarket_dbt_job_definition`, `ie_supermarket_compact_job_definition` | Registered; revision 2 uses the newest image (revision 1 was the first image, whose tests failed on missing fixtures) | `aws batch describe-job-definitions` |
 | Schedule `supermarket-dbt-daily` (`cron(30 11-14 * * ? *)`) | **ENABLED**, writes only to the shadow prefixes | `aws scheduler get-schedule --name supermarket-dbt-daily` |
-| Schedule `supermarket-raw-compaction-daily` (`cron(30 15 * * ? *)`) | **DISABLED** | `aws scheduler get-schedule --name supermarket-raw-compaction-daily` |
+| Schedule `supermarket-raw-compaction-daily` (`cron(30 15 * * ? *)`) | **ENABLED** (dates 2-7 days old only; enabled after the backfill below) | `aws scheduler get-schedule --name supermarket-raw-compaction-daily` |
 | Shadow catalog and runs | Seeded from the local database; three days (2026-10-24, 25, 26) built by manual `submit-job` runs, 12 `dbt/state-shadow/built/...` markers; lake matches the local database up to 2026-10-23 with no duplicates | `aws s3 ls s3://ie-supermarket-data/dbt/state-shadow/ --recursive` |
 | Production state (`dbt/state/`, `ducklake/`) | **Do not exist yet** (cutover pending); `landing/` exists (shared, written by the shadow runs) | `aws s3 ls` |
 | `processed/all_supermarket_products.parquet` | Still last written by a local run; the shadow job writes `processed-shadow/` instead | `aws s3 ls` |
-| S3 lifecycle rules | **Not applied** (applying the housekeeping file was blocked pending approval, because it permanently expires old object versions in bulk) | `aws s3api get-bucket-lifecycle-configuration` |
-| Raw compaction | **Not run** in production (a read-only dry run for 2026-10-20 reported 535 objects would merge into 4) | plan doc rollout step 5 |
+| S3 lifecycle rules | **Applied** (`infra/dbt/s3_lifecycle.json`: raw and landing to Glacier IR, noncurrent versions expire after 14 days (3 for `processed/`), delete markers and multipart uploads cleaned, catalog archive expires after 8 days) | `aws s3api get-bucket-lifecycle-configuration` |
+| Raw compaction | **Done** for every day up to 2026-10-25 (four Batch jobs, one per retailer, all exited 0): each `raw/{retailer}/{date}/` now holds the `_run_summary_chunk*.json` files plus one `compacted.jsonl.gz` (about 540 objects became about 6 per retailer-day). The originals are noncurrent versions, recoverable until the 14-day rule removes them (about 2026-11-10). A compacted day (2026-10-22) rebuilt through the shadow job matched the local database exactly | `aws s3 ls s3://ie-supermarket-data/raw/tesco/2026-10-22/` |
 
-The first manual run of the first image failed at one dbt test because the fixture files had never been committed (the root `.gitignore` excludes `*.jsonl`); `780ecb7` fixed that. The scheduled slots themselves have not fired yet (the first full day of slots is 2026-10-28), so the Scheduler `Input` format is still unproven. The plan's **rollout order** (shadow week, cutover after `seed_lake.py`, compaction backfill by hand, lifecycle rules) is in [dbt_orchestration_plan.md](dbt_orchestration_plan.md).
+The first manual run of the first image failed at one dbt test because the fixture files had never been committed (the root `.gitignore` excludes `*.jsonl`); `780ecb7` fixed that. The scheduled slots themselves have not fired yet (the first full day of slots is 2026-10-28), so the Scheduler `Input` format is still unproven. The plan's **rollout order** (shadow week, then cutover after `seed_lake.py`; the compaction backfill and lifecycle rules are done) is in [dbt_orchestration_plan.md](dbt_orchestration_plan.md).
 
 Unverified until the first slot fires: the key casing of the Scheduler `Input` JSON for `batch:submitJob` (the template uses PascalCase `JobName`, `JobQueue`, ...). A run triggered by hand with `aws batch submit-job` does not test this.
 
@@ -543,9 +543,9 @@ Batch backfill (once the pipeline is live): submit the dbt job with `RUN_DATE=<d
 | 08:16-08:59 | SuperValu chunks (12-15 min each; starts staggered as capacity frees) | live |
 | 08:01-09:07 | Dunnes chunks (5-6 min each; some start later, ~08:53-09:00, probably waiting for capacity; **unverified**) | live |
 | 10:49 | Last Tesco summary file is written; day's raw data complete | live |
-| 11:30, 12:30, 13:30, 14:30 | EventBridge Scheduler slots submit `ie_supermarket_dbt_job_definition` (14:30 is the "final" slot) | built; **dbt slots ENABLED (shadow)**, compaction DISABLED |
+| 11:30, 12:30, 13:30, 14:30 | EventBridge Scheduler slots submit `ie_supermarket_dbt_job_definition` (14:30 is the "final" slot) | built; **dbt slots ENABLED (shadow)** |
 | 14:00 | `supermarket_summary_check` Lambda emails if anything is missing or failed | live |
-| 15:30 | Raw compaction job (dates 2-7 days old only) | built, **DISABLED** |
+| 15:30 | Raw compaction job (dates 2-7 days old only) | **ENABLED** |
 | Any time | Any Batch job reaching FAILED emails via SNS | live |
 
 Today, steps from 11:30 onward are done by hand (section 10.2).

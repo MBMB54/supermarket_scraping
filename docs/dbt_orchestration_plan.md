@@ -1,11 +1,11 @@
 # Running dbt on a schedule
 
 Status (2026-10-27): **deployed in shadow mode**. Stack `supermarket-dbt-batch` exists with the shadow
-prefixes (`dbt/state-shadow`, `ducklake-shadow/`, `processed-shadow/`); the dbt schedule is ENABLED, the
-compaction schedule is DISABLED. Three shadow days (2026-10-24..26) were built on real AWS Batch from the
-image built by `aws.yml`, and the shadow lake matches the local database exactly up to 2026-10-23.
-Production state (`dbt/state/`, `ducklake/`), the S3 lifecycle rules and raw compaction are **not** done
-yet; see "Rollout".
+prefixes (`dbt/state-shadow`, `ducklake-shadow/`, `processed-shadow/`); both schedules are ENABLED (the
+dbt one writes only to the shadow prefixes). Four shadow days were built on real AWS Batch from the image
+built by `aws.yml`, and the shadow lake matches the local database exactly (including 2026-10-22, rebuilt
+from compacted raw). The lifecycle rules are applied and the raw backfill compaction is done (all dates up
+to 2026-10-25). Still pending: the production lake (`dbt/state/`, `ducklake/`) and the cutover; see "Rollout".
 
 ## Recommendation
 
