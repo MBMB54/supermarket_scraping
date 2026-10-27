@@ -1,9 +1,11 @@
 # Running dbt on a schedule
 
-Status: built and rehearsed locally (including against a scratch S3 prefix); **not deployed**. Nothing
-in `raw/`, `processed/` or `dbt/` of the production bucket has been modified. The Docker image was
-not built (no Docker on the dev machine); its dependency set was installed and tested in a fresh
-Python 3.12 venv from `infra/dbt/requirements.txt`.
+Status (2026-10-27): **deployed in shadow mode**. Stack `supermarket-dbt-batch` exists with the shadow
+prefixes (`dbt/state-shadow`, `ducklake-shadow/`, `processed-shadow/`); the dbt schedule is ENABLED, the
+compaction schedule is DISABLED. Three shadow days (2026-10-24..26) were built on real AWS Batch from the
+image built by `aws.yml`, and the shadow lake matches the local database exactly up to 2026-10-23.
+Production state (`dbt/state/`, `ducklake/`), the S3 lifecycle rules and raw compaction are **not** done
+yet; see "Rollout".
 
 ## Recommendation
 

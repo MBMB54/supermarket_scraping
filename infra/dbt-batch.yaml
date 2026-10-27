@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
   Daily dbt build and raw compaction as AWS Batch Fargate jobs, triggered by EventBridge Scheduler.
-  Draft: validated with `aws cloudformation validate-template` only, not deployed. See
+  Deployed 2026-10-27 as stack supermarket-dbt-batch (shadow prefixes). See
   docs/dbt_orchestration_plan.md. The alert topic comes from batch-alerts.yaml.
 
 Parameters:
