@@ -23,7 +23,12 @@ dbtf build --project-dir dbt --vars '{run_date: 2026-08-05, parquet_output_prefi
 ```
 
 `--static-analysis off` is not needed: the project sets no `static_analysis` config and the default
-works. `--static-analysis strict` still fails on `list_filter(json_keys(...))` (Fusion bug).
+works. `--static-analysis strict` fails (re-checked 2026-10-28, Fusion 2.0.9): Fusion's analyzer cannot see the schema of
+`read_json(...)`/`read_parquet(...)` external-location sources (`No column ... found. Available are read_parquet`)
+and its SQL parser rejects DuckDB named table-function arguments, both `union_by_name=true` (`Unresolved identifier
+union_by_name`) and `union_by_name := true` (syntax error). Those errors stop analysis before the older
+`list_filter(json_keys(...))` problem can be reached, so that one is unconfirmed. The DuckDB 2.0 `VARIANT` type would not
+change this: the failures are in Fusion's parser/type inference, not in how JSON is typed, and Fusion embeds DuckDB 1.5.5.
 
 ## Vars
 
