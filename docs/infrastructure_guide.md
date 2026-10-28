@@ -236,7 +236,7 @@ The Batch image and the project env run DuckDB 2.0 (upgraded 2026-10-28). DuckDB
 Details worth knowing:
 
 - **Storefront retailers (SuperValu, Dunnes).** Each chunk lists all stores (`/api/stores`), shuffles them with `random.Random(chunk_id)` (so each chunk always uses the same subset of 60 stores) and tries stores in order until one returns the product. A product is recorded as `Not found in any store` only if store misses outnumber transient errors; otherwise the record carries the real error (e.g. `HTTP 503`), so an outage looks like an outage and not like 'stale IDs'. After 3 consecutive store errors it stops trying. Because Dunnes stocks many items in only a few of its 103 stores and its ID list is old, about 1-2% of Dunnes IDs are not found in a normal run, but the gate allows 85% (it is a backstop for outages, not a coverage target; background in [scraper_data_quality.md](scraper_data_quality.md) and [dunnes_ids_investigation.md](dunnes_ids_investigation.md)).
-- **Stale IDs.** The ID lists lag the sites, so some IDs no longer exist. Those return `Not found in any store` (storefronts), `HTTP 404`, or `No product returned` (Tesco). The dbt staging models for SuperValu/Dunnes drop those rows; Aldi's and Tesco's stale rows are kept or dropped according to the staging SQL (the shared macro `is_stale_id_error` in [dbt/macros/stale_id.sql](../dbt/macros/stale_id.sql) lists `Not found in any store` and `HTTP 404`).
+- **Stale IDs.** The ID lists lag the sites, so some IDs no longer exist. Those return `Not found in any store` (storefronts), `HTTP 404`, or `No product returned` (Tesco). All four dbt staging models drop those rows through the shared macro `is_stale_id_error` in [dbt/macros/stale_id.sql](../dbt/macros/stale_id.sql) (exact strings `Not found in any store`, `HTTP 404`, `No product returned`, plus any error containing `product-not-found`, which is how Tesco's GraphQL 404 is phrased). Tesco's was added 2026-10-28; before that its not-found rows reached the listings with a null title and produced the `not_null_*_title` warnings. The scraper classifies the same errors as `not_found` (`scraper_common/quality.py`, `is_not_found`); keep the two lists in sync.
 - **Tesco 429 incident.** From 2026-08-09 Tesco put Akamai rate controls in front of its API; about 70% of the daily scrape was lost as `HTTP 429` or as silent empty responses. The fix in the code today is the pacer, Retry-After/backoff handling, classification of GraphQL error bodies sent with HTTP 200, and keeping still-throttled records out of the checkpoint so a re-run retries them. 2026-10-27's Tesco run shows `ok = planned` for chunk 0, so the fix works. [tesco-429-incident.md](tesco-429-incident.md) still says "open, unfixed as of 2026-09-02"; that header is out of date (it is useful history, with the per-day error table in `tesco-429-error-rate-history.tsv`). The Lambda gives Tesco jobs a 4-hour attempt timeout and only 0.25 vCPU / 1 GB (they wait on the pacer, so they use little CPU).
 - **Aldi** returns HTTP 200 with no `data` key for some IDs; that is counted as an *empty* record and checked against the 5% empty limit.
 - **Dunnes ID refresh** is frozen. If new Dunnes products appear, they are not scraped. The workaround script rebuilds the list from a recent complete raw scrape and keeps only IDs that returned data or failed transiently.
@@ -458,7 +458,7 @@ Project: [dbt/dbt_project.yml](../dbt/dbt_project.yml), profile name `dbt_ie_sup
 | Layer | Models | Materialization | Meaning |
 |---|---|---|---|
 | **Sources** | `external_source.{aldi,tesco,dunnes,supervalu}` ([raw_s3.yml](../dbt/models/staging/raw_s3.yml)) | n/a | The day's raw files: `read_json('s3://.../raw/{retailer}/{run_date}/*.jsonl.gz', union_by_name=true)`, or, when `use_landing=true`, `read_parquet('{landing_prefix}/{retailer}/scraped_date={run_date}/*.parquet')`. `union_by_name` infers the schema per file and merges, because free-form `attributes` keys drift between files. |
-| **Staging** | `stg_aldi`, `stg_tesco`, `stg_dunnes`, `stg_supervalu` | view | One row per raw record, renamed and typed. SuperValu/Dunnes drop `Not found in any store`; genuine fetch failures stay so tests can see them. Tesco keeps empty records. |
+| **Staging** | `stg_aldi`, `stg_tesco`, `stg_dunnes`, `stg_supervalu` | view | One row per raw record, renamed and typed. All four drop stale-ID errors (`is_stale_id_error`); genuine fetch failures stay so tests can see them. |
 | **Intermediate** | `int_aldi`, `int_tesco`, `int_dunnes`, `int_supervalu` | views (`int_supervalu` is a table) | Business logic on an identical **46-column schema** in the same order so they can be `UNION ALL`ed. Normalised text (`title`, `brand`, `title_cleaned`), parsed prices and pack sizes, unit price normalised to per kg / litre / metre / each, promotion fields, allergens and dietary flags. A retailer lacking a field emits an explicitly typed NULL. |
 | | `int_all_supermarket_products` | `external` (writes Parquet) | Slim `id, supermarket, title, title_cleaned, image_url` export of `fct_product_listings` to `{parquet_output_prefix}/all_supermarket_products.parquet`. The name predates the marts layer; it is an output, not an intermediate. |
 | | `int_product_title_embeddings` | table | Reads title embeddings back from `{embeddings_input_prefix}/embeddings/{embedding_model}/product_title_embeddings.parquet` (computed by `ml/embeddings.py`, not in dbt). Not part of the Batch job's useful output. |
@@ -614,7 +614,7 @@ Applies to all four retailers through `scraper_common` (Tesco adopted it; it kee
 | Bucket | Meaning |
 |---|---|
 | `ok` | non-empty `data` |
-| `not_found` | `error` in {`Not found in any store`, `HTTP 404`, `No product returned`} (a stale ID; expected) |
+| `not_found` | `error` in {`Not found in any store`, `HTTP 404`, `No product returned`} or a message containing `product-not-found` (Tesco's GraphQL 404) (a stale ID; expected) |
 | `error` | any other error text |
 | `empty` | no error but null/empty `data` (silent rate-limiting) |
 | `retryable` | transient failure after all retries; written but not checkpointed; counted as an error |
@@ -690,7 +690,7 @@ Built-in dbt tests also used: `unique`, `not_null`, `accepted_values`, `relation
 | Test | Checks | Severity |
 |---|---|---|
 | `assert_scrape_gate` | The dbt-level backstop of the scraper gate, computed on the raw source for every retailer in `var('retailers')`: error rate > 20%, empty rate > 5%, or not-found rate > 60% (Dunnes 85%). Keep numbers in sync with the scraper defaults. | error |
-| `assert_scrape_error_rate` | Early warning at a quarter of the gate: error rate ≥ 5% or empty rate ≥ 1% per retailer. | **warn** |
+| `assert_scrape_error_rate` | Early warning at a quarter of the gate: error rate ≥ 5% or empty rate ≥ 1% per retailer, and (Tesco and Aldi only) not-found rate ≥ 5%, which signals a lagging ID feed or false 404s because stale IDs are dropped in staging. | **warn** |
 | `assert_fct_matches_int_row_counts` | `fct_product_listings` row count equals the sum of the `int_` models for the retailers built this run. | error |
 | `assert_price_history_consistent` | Per product: exactly one `is_current` version; versions do not overlap or invert; `last_seen_date` and `is_active` are the same across versions and match a recomputation from the daily table with the grace days. | error |
 | `assert_unit_price_matches_effective_price` | For deep discounts (≥ 10% off) on kg/l items, warns if over 5% of rows carry a unit price that equals the old regular price rather than the effective price (Tesco's raw figure did). | **warn** |
@@ -733,7 +733,7 @@ The local plan-doc run on 2026-10-26 reported 118 tests passing and 3 pre-existi
 | `null_row_rate` warn (>1%) | Same, milder | Watch the trend |
 | `unique` on a staging `id` | Duplicate ids in the day's raw folder: a re-run wrote the same ID twice, or the ID list has duplicates | Remove the superseded batch files for that chunk (10.4) |
 | `assert_scrape_gate` | The raw partition breaches scraper limits (a chunk was force-ignored, or thresholds drifted apart) | Same as the scraper gate failing |
-| `assert_scrape_error_rate` warn | Error ≥ 5% or empty ≥ 1% | Early warning only |
+| `assert_scrape_error_rate` warn | Error ≥ 5%, empty ≥ 1%, or (Tesco/Aldi) not-found ≥ 5% | Early warning only |
 | `accepted_range` price | A price outside 0-1000 or negative: parsing bug or bad data | Inspect the offending rows in `stg_`/`int_` |
 | `unique_combination` on `fct_product_price_daily` | Duplicate key after delete+insert: should not happen; indicates a bug | Stop; do not full-refresh; investigate |
 | `assert_fct_matches_int_row_counts` | A mart union dropped or duplicated rows | Investigate the union / `retailers` var |
@@ -843,7 +843,7 @@ Preconditions: understand the hazard in 4.3 (duplicates).
 | Failure | How you see it | Cause and fix |
 |---|---|---|
 | **Tesco 429s / silent empties** | Tesco chunk FAILED; `error_samples` shows `HTTP 429` or `GraphQL 429`; empty rate high | Akamai rate limiting. Keep the aggregate rate at or below 2.0 req/s (`TESCO_TOTAL_REQ_PER_SEC`); do not raise `TOTAL_CHUNKS` without dividing the rate; re-run the failed chunk off-peak (10.4). Background in [tesco-429-incident.md](tesco-429-incident.md). |
-| **Stale IDs** | High `not_found` rate (SuperValu/Dunnes: "Not found in any store"; Tesco: "No product returned"; Aldi/Tesco `HTTP 404`) | The ID list is old. Refresh it (SuperValu/Aldi: `FORCE_REFRESH=1` ID job; Tesco: local script; Dunnes: `scripts/dunnes_ids_from_raw.py`). Gate trips at 60% (Dunnes 85%). |
+| **Stale IDs** | High `not_found` rate (SuperValu/Dunnes: "Not found in any store"; Tesco: GraphQL `product-not-found`; Aldi `HTTP 404`) | The ID list is old. Refresh it (SuperValu/Aldi: `FORCE_REFRESH=1` ID job; Tesco: local script; Dunnes: `scripts/dunnes_ids_from_raw.py`). Gate trips at 60% (Dunnes 85%). |
 | **Dunnes Cloudflare** | `dunnes_ids.py` returns nothing / 403 "Just a moment..."; gateway answers 429 with the challenge page | The ID sitemap is challenged; the job is not scheduled. After many requests from one IP the gateway itself can throttle. Use the derive-from-raw script; do not try to bypass the challenge (see [dunnes_ids_investigation.md](dunnes_ids_investigation.md)). |
 | **ID list shrank** | `ids/_run_summary_<date>.json` `status: rejected` | The sitemap changed or was blocked. Investigate; `FORCE_IDS=1` only if the smaller list is real. |
 | **Tesco ID refresh not publishing** | `ids/latest` older than a week | Run `scripts/run_tesco_ids_local.sh` on a residential connection; read its log. |

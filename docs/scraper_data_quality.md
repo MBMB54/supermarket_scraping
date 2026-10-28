@@ -22,7 +22,7 @@ error_rate, empty_rate, not_found_rate, status (ok|failed), failures[], planned_
 | zero rows produced | fail | - |
 | error rate (error + retryable) | 20% | `MAX_ERROR_RATE` |
 | empty/null payload rate (`data` null/empty and `error` null) | 5% | `MAX_EMPTY_RATE` |
-| not-found rate (`Not found in any store`, `HTTP 404`) | 60% (dunnes 85%) | `MAX_NOT_FOUND_RATE` |
+| not-found rate (`Not found in any store`, `HTTP 404`, `No product returned`, Tesco's GraphQL `product-not-found`) | 60% (dunnes 85%) | `MAX_NOT_FOUND_RATE` |
 
 ## Fields dbt should expect
 
