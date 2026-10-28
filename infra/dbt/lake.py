@@ -22,7 +22,9 @@ STATE_PREFIX = os.environ.get("STATE_PREFIX", "dbt/state")
 CATALOG_KEY = f"{STATE_PREFIX}/catalog.ducklake"
 LOCK_KEY = f"{STATE_PREFIX}/LOCK"
 DATA_PATH = os.environ.get("LAKE_DATA", f"s3://{BUCKET}/ducklake/")
-LOCK_MAX_AGE_HOURS = float(os.environ.get("LOCK_MAX_AGE_HOURS", "3"))
+# A run takes ~2 minutes; the compute environment is Fargate Spot, so an interrupted run leaves its lock
+# behind and the next scheduler slot (an hour later) must be able to take it over.
+LOCK_MAX_AGE_HOURS = float(os.environ.get("LOCK_MAX_AGE_HOURS", "0.5"))
 SNAPSHOT_RETENTION_DAYS = int(os.environ.get("SNAPSHOT_RETENTION_DAYS", "7"))
 
 

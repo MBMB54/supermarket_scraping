@@ -33,6 +33,15 @@ Parameters:
     Default: DISABLED
     AllowedValues: [ENABLED, DISABLED]
     Description: Deploys DISABLED. Enable only after the historical backfill has been run and reviewed by hand.
+  Retailers:
+    Type: String
+    Default: "tesco,aldi,dunnes,supervalu"
+    Description: Retailers the missing-run check expects a built marker for.
+  CheckScheduleState:
+    Type: String
+    Default: ENABLED
+    AllowedValues: [ENABLED, DISABLED]
+    Description: The 15:00 UTC missing-run check only emails; it changes nothing.
   StatePrefix:
     Type: String
     Default: dbt/state
@@ -138,6 +147,7 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
+              - {Effect: Allow, Action: "lambda:InvokeFunction", Resource: !GetAtt BuiltCheckFunction.Arn}
               - Effect: Allow
                 Action: "batch:SubmitJob"
                 Resource:
@@ -183,3 +193,87 @@ Resources:
           - |
             {"JobName": "raw-compaction", "JobQueue": "${Queue}", "JobDefinition": "${Def}"}
           - {Queue: !Ref JobQueueArn, Def: ie_supermarket_compact_job_definition}
+
+  # Silent-failure net: if the Scheduler, Batch or the job itself never runs, nothing else emails.
+  # 15:00 UTC is after the last dbt slot (14:30) plus its ~2 minute runtime.
+  BuiltCheckRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - {Effect: Allow, Principal: {Service: lambda.amazonaws.com}, Action: "sts:AssumeRole"}
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: check-built-markers
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: "s3:ListBucket"
+                Resource: !Sub "arn:aws:s3:::${Bucket}"
+                Condition:
+                  StringLike:
+                    "s3:prefix": [!Sub "${StatePrefix}/built/*"]
+              - {Effect: Allow, Action: "sns:Publish", Resource: !Ref AlertTopicArn}
+
+  BuiltCheckFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: supermarket_dbt_built_check
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 30
+      Role: !GetAtt BuiltCheckRole.Arn
+      Environment:
+        Variables:
+          BUCKET: !Ref Bucket
+          STATE_PREFIX: !Ref StatePrefix
+          RETAILERS: !Ref Retailers
+          TOPIC_ARN: !Ref AlertTopicArn
+      Code:
+        ZipFile: |
+          import datetime
+          import os
+
+          import boto3
+
+          s3 = boto3.client("s3")
+          sns = boto3.client("sns")
+
+
+          def handler(event, context):
+              """Email if any retailer has no built marker for the day (default today, UTC).
+
+              Event: {"date": "YYYY-MM-DD"} to check another day, {"dry_run": true} to not email.
+              """
+              day = event.get("date") or datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+              prefix = f"{os.environ['STATE_PREFIX']}/built/{day}/"
+              listing = s3.list_objects_v2(Bucket=os.environ["BUCKET"], Prefix=prefix)
+              built = {o["Key"][len(prefix):] for o in listing.get("Contents", [])}
+              missing = [r for r in os.environ["RETAILERS"].split(",") if r not in built]
+              if missing and not event.get("dry_run"):
+                  sns.publish(
+                      TopicArn=os.environ["TOPIC_ARN"],
+                      Subject=f"dbt MISSING for {day}: {', '.join(missing)}"[:99],
+                      Message=(
+                          f"No built marker under s3://{os.environ['BUCKET']}/{prefix} for: "
+                          f"{', '.join(missing)}.\nThe dbt job did not publish them: check the 14:30 "
+                          "slot's Batch job (supermarket-dbt-daily schedule, job names dbt-daily) and "
+                          "any 'dbt DEGRADED' / 'dbt NOT RUN' email."
+                      ),
+                  )
+              return {"date": day, "built": sorted(built), "missing": missing}
+
+  BuiltCheckSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: supermarket-dbt-built-check
+      State: !Ref CheckScheduleState
+      ScheduleExpression: "cron(0 15 * * ? *)"
+      FlexibleTimeWindow: {Mode: "OFF"}
+      Target:
+        Arn: !GetAtt BuiltCheckFunction.Arn
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: "{}"
