@@ -47,7 +47,7 @@ to 2026-10-25). Still pending: the production lake (`dbt/state/`, `ducklake/`) a
 - Marts get `+database: lake` only when `target.name == 'batch'`.
 - The `primary_key` constraint on `fct_product_listings` was dropped: DuckLake cannot enforce it. The `unique_combination` test covers it.
 - The Batch job passes `--exclude test_type:unit`: two unit tests error and one differs on fixture typing under dbt-core (they pass under Fusion). Run them locally with Fusion. Worth fixing later.
-- The image still pins `duckdb<2`, now for a different reason (see "DuckDB 2.0" below). The models were migrated to `lambda x: ...` (2026-10-28), which works on 1.5 and 2.0.
+- The image runs DuckDB 2.0 (`duckdb>=2.0.0,<3`, upgraded 2026-10-28; see "DuckDB 2.0" below). The models were migrated to `lambda x: ...`, which works on 1.5 and 2.0.
 - `scraper_common/{config,storage}.py` gained `from __future__ import annotations` (the dbt image is Python 3.12; dbt-core does not run on 3.14) and `Storage` gained `put_if_absent`, `list_keys`, `delete_many`.
 
 ## Cost (eu-west-1 list prices from the AWS Pricing API, measured sizes)
@@ -89,7 +89,7 @@ the pipeline builds on 2.0.0 and on 1.5.6 with identical results (0 differing ro
 - **Python client**: 2.0 removed relation-level `fetchone()`/`fetchmany()`; `ml/agents.py` now uses `rel.limit(n).fetchall()` (valid on both). The pipeline code only uses connection-level `execute().fetchone()`.
 - **`icu`** moved out of core; added to the image's pre-installed extensions.
 - Checked and not affected: regex `~` semantics, `//`/`%` by zero, untyped `NULL` columns, `X''`/`B''` literals, `MERGE`, S3 URL parameters (none used).
-- To finish the upgrade: `uv lock --upgrade-package duckdb` for the project env, then lift the pin in `infra/dbt/requirements.txt`. Order: readers first, then the Batch image.
+- Upgrade done 2026-10-28, readers first: the project env is locked to DuckDB 2.0.0 (`pyproject.toml` floor raised to `>=2.0.0`; `ml/agents.py` hybrid BM25 + cosine search verified on a copy of the local database), then the Batch image lifted its pin to `duckdb>=2.0.0,<3`. A plain DuckDB file written by 2.0 stays readable by 1.5.6 (tested on a copy of `supermarket_data.db`), so the local Fusion workflow is unaffected; only DuckLake catalogs are one-way. Python 2.0 note: array columns (e.g. `FLOAT[640]`) come back as tuples, not lists, so `.tolist()` before interpolating into SQL.
 
 ## Operating notes
 
