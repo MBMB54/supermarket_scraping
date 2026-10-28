@@ -1,5 +1,9 @@
 WITH source AS (
     SELECT * FROM {{ source('external_source', 'tesco') }}
+    -- Discontinued products come back as a GraphQL `product-not-found` error with no data. Filter the
+    -- specific errors, not `error IS NOT NULL`, so real failures (429, transport) stay visible to
+    -- assert_scrape_error_rate and the null-row tests.
+    WHERE NOT coalesce({{ is_stale_id_error('error') }}, false)
 )
 
 SELECT

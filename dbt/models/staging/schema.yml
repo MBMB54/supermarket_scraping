@@ -3,7 +3,7 @@ version: 2
 models:
   - name: stg_tesco
     description: >
-      Tesco raw API records, one row per product id, renamed and typed only. Rows with no payload (HTTP 429 / silent failures) are deliberately kept so null_row_rate and assert_scrape_error_rate can see them.
+      Tesco raw API records, one row per product id, renamed and typed only. Stale ids (GraphQL `product-not-found`) are dropped; rows with no payload for other reasons (HTTP 429 / silent failures) are deliberately kept so null_row_rate and assert_scrape_error_rate can see them.
     data_tests:
       - min_row_count:
           arguments:

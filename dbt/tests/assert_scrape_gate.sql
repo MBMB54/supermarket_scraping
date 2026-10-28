@@ -13,10 +13,10 @@ agg AS (
         retailer,
         count(*) AS total_records,
         100.0 * count(*) FILTER (
-            WHERE error IS NOT NULL AND error NOT IN ('Not found in any store', 'HTTP 404')
+            WHERE error IS NOT NULL AND NOT {{ is_stale_id_error('error') }}
         ) / count(*) AS error_pct,
         100.0 * count(*) FILTER (WHERE error IS NULL AND no_data) / count(*) AS empty_pct,
-        100.0 * count(*) FILTER (WHERE error IN ('Not found in any store', 'HTTP 404')) / count(*) AS not_found_pct
+        100.0 * count(*) FILTER (WHERE {{ is_stale_id_error('error') }}) / count(*) AS not_found_pct
     FROM raw
     GROUP BY retailer
 )
