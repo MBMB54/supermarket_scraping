@@ -40,7 +40,7 @@ change this: the failures are in Fusion's parser/type inference, not in how JSON
 
 ## Batch target (DuckLake)
 
-`infra/dbt/profiles.yml` target `batch` (used by the scheduled AWS Batch job, dbt-core + dbt-duckdb) runs with an in-memory main database and attaches a DuckLake catalog as `lake`; the marts (`+database: lake`, set only when `target.name == 'batch'`) are the only persisted tables, so the price history is Parquet under `s3://ie-supermarket-data/ducklake/` plus a small catalog file. Local `dev`/`prod` targets still keep everything in `supermarket_data.db`. DuckLake cannot enforce primary keys, so `fct_product_listings` relies on its `unique_combination` test. The job excludes `test_type:unit` (three unit tests differ under dbt-core; run them locally with Fusion) and pins `duckdb<2` because DuckDB 2.0 rejects the `x -> ...` lambda syntax. See `docs/dbt_orchestration_plan.md`.
+`infra/dbt/profiles.yml` target `batch` (used by the scheduled AWS Batch job, dbt-core + dbt-duckdb) runs with an in-memory main database and attaches a DuckLake catalog as `lake`; the marts (`+database: lake`, set only when `target.name == 'batch'`) are the only persisted tables, so the price history is Parquet under `s3://ie-supermarket-data/ducklake/` plus a small catalog file. Local `dev`/`prod` targets still keep everything in `supermarket_data.db`. DuckLake cannot enforce primary keys, so `fct_product_listings` relies on its `unique_combination` test. The job excludes `test_type:unit` (three unit tests differ under dbt-core; run them locally with Fusion) and pins `duckdb<2` (DuckDB 2.0's storage format is one-way for the lake; the models already use the 2.0-compatible `lambda x: ...` syntax). See `docs/dbt_orchestration_plan.md`.
 
 ## Raw source reads
 

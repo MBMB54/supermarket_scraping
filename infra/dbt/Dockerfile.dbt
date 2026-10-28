@@ -14,6 +14,6 @@ COPY dbt/ dbt/
 COPY infra/dbt/*.py infra/dbt/profiles.yml infra/dbt/
 
 # Pre-install the DuckDB extensions so the job does not need internet beyond S3
-RUN python -c "import duckdb; c=duckdb.connect(); [c.execute(f'INSTALL {e}') for e in ('httpfs','aws','ducklake')]"
+RUN python -c "import duckdb; c=duckdb.connect(); [c.execute(f'INSTALL {e}') for e in ('httpfs','aws','ducklake','icu')]"
 
 CMD ["python", "infra/dbt/run_dbt.py"]

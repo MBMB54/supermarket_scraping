@@ -207,7 +207,7 @@ python3.12 -m venv /tmp/dbt312 && /tmp/dbt312/bin/pip install -r infra/dbt/requi
 /tmp/dbt312/bin/dbt parse --project-dir dbt --profiles-dir infra/dbt --vars '{run_date: 2026-01-01}'
 ```
 
-`duckdb<2` is pinned because DuckDB 2.0 rejects the `x -> ...` lambda syntax used in the models. The local `dev`/`prod` targets use dbt-duckdb too, but untested combinations (dbt-core on the 3.14 virtualenv) are **unverified**; use Fusion for local work.
+`duckdb<2` is pinned because DuckDB 2.0 writes a storage format that 1.5.x readers (the project env's DuckDB 1.5.3, Fusion's embedded 1.5.5) cannot open, and it upgrades an existing DuckLake catalog in place; the models themselves are 2.0-ready (`lambda x: ...` syntax, verified identical results on 1.5.6 and 2.0.0, see dbt_orchestration_plan.md, "DuckDB 2.0"). The local `dev`/`prod` targets use dbt-duckdb too, but untested combinations (dbt-core on the 3.14 virtualenv) are **unverified**; use Fusion for local work.
 
 ---
 

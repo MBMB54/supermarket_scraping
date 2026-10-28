@@ -1,6 +1,9 @@
 # dbt-core + dbt-duckdb (Python 3.12) rather than Fusion: no licence needed in a container.
-# duckdb < 2: the models use the single-arrow lambda syntax (x -> ...), which DuckDB 2.0 rejects
-# (Fusion embeds 1.5.5). >= 1.5.2 is the first release with DuckLake 1.0.
+# duckdb < 2 for now. The models are 2.0-ready (they use `lambda x: ...`, valid on 1.5 and 2.0, and build
+# identically on both), but DuckDB 2.0 writes storage version 69 and rewrites an existing DuckLake
+# catalog to it, which 1.5.x readers (notebooks, Fusion's embedded 1.5.5) cannot open. Lift the pin once
+# every reader is on 2.0 (docs/dbt_orchestration_plan.md, "DuckDB 2.0").
+# >= 1.5.2 is the first release with DuckLake 1.0.
 dbt-core~=1.10.0
 dbt-duckdb~=1.10.0
 duckdb>=1.5.2,<2

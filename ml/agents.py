@@ -193,7 +193,7 @@ def run_sql(ctx: RunContext[Deps], sql: str) -> str:
     try:
         rel = ctx.deps.conn.cursor().sql(sql)
         columns = rel.columns
-        rows = rel.fetchmany(25)
+        rows = rel.limit(25).fetchall()
     except duckdb.Error as e:
         raise ModelRetry(f"Query failed: {e}") from e
 
@@ -309,7 +309,7 @@ def hybrid_search(
     try:
         rel = ctx.deps.conn.cursor().sql(query)
         columns = rel.columns
-        rows = rel.fetchmany(21)
+        rows = rel.limit(21).fetchall()
     except duckdb.Error as e:
         raise ModelRetry(f"Query failed: {e}") from e
 

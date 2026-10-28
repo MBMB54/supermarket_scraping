@@ -47,7 +47,7 @@ to 2026-10-25). Still pending: the production lake (`dbt/state/`, `ducklake/`) a
 - Marts get `+database: lake` only when `target.name == 'batch'`.
 - The `primary_key` constraint on `fct_product_listings` was dropped: DuckLake cannot enforce it. The `unique_combination` test covers it.
 - The Batch job passes `--exclude test_type:unit`: two unit tests error and one differs on fixture typing under dbt-core (they pass under Fusion). Run them locally with Fusion. Worth fixing later.
-- The image pins `duckdb<2`: DuckDB 2.0 (already released) rejects the `x -> ...` lambda syntax used in the models. Migrating to `lambda x: ...` would lift the pin.
+- The image still pins `duckdb<2`, now for a different reason (see "DuckDB 2.0" below). The models were migrated to `lambda x: ...` (2026-10-28), which works on 1.5 and 2.0.
 - `scraper_common/{config,storage}.py` gained `from __future__ import annotations` (the dbt image is Python 3.12; dbt-core does not run on 3.14) and `Storage` gained `put_if_absent`, `list_keys`, `delete_many`.
 
 ## Cost (eu-west-1 list prices from the AWS Pricing API, measured sizes)
@@ -78,6 +78,18 @@ Glacier IR only pays once the raw files are compacted: small objects are billed 
 ## IAM
 
 New role `supermarket-dbt-job-role` (`infra/iam/dbt-job-role-policy.json`): read `raw/*`; read/write/delete `landing/*`, `ducklake/*`, `dbt/*`, `processed/*`; list those prefixes; `sns:Publish`. It cannot delete raw data. The compaction job reuses `supermarket-batch-job-role` (raw read/write/delete). Scheduler needs `batch:SubmitJob` on the queue and both job definitions.
+
+## DuckDB 2.0
+
+Tested 2026-10-28 (dbt-core 1.10, dbt-duckdb 1.10, DuckDB 2.0.0, DuckLake and all other extensions available):
+the pipeline builds on 2.0.0 and on 1.5.6 with identical results (0 differing rows in `fct_product_price_daily`, `fct_product_listings`, `fct_price_history`; 118 tests green on both; Fusion's 8 unit tests pass).
+
+- **Lambda syntax** (done): the 12 single-arrow lambdas (`int_aldi`, `int_tesco`, `allergens.sql`, `stg_tesco`) are now `lambda x: ...`. No temporary setting needed. (`SET lambda_syntax='enable_single_arrow'` also works but is removed in DuckDB 2.1.)
+- **Not the only blocker, storage format**: 2.0 writes storage version 69, and when it modified an existing 1.5.6-created DuckLake catalog the result could no longer be opened by 1.5.6 ("cannot initialize database with storage version 7 - which is lower than what the database itself uses (69)"). `storage_compatibility_version` works for ordinary DuckDB files but did not make a *DuckLake* catalog readable by 1.5.x. So the lake upgrade is one-way: every reader (notebooks on the project env's 1.5.3, Fusion's embedded 1.5.5 if it ever attaches the lake) must be on 2.0 first, or the Batch image stays on 1.5.x.
+- **Python client**: 2.0 removed relation-level `fetchone()`/`fetchmany()`; `ml/agents.py` now uses `rel.limit(n).fetchall()` (valid on both). The pipeline code only uses connection-level `execute().fetchone()`.
+- **`icu`** moved out of core; added to the image's pre-installed extensions.
+- Checked and not affected: regex `~` semantics, `//`/`%` by zero, untyped `NULL` columns, `X''`/`B''` literals, `MERGE`, S3 URL parameters (none used).
+- To finish the upgrade: `uv lock --upgrade-package duckdb` for the project env, then lift the pin in `infra/dbt/requirements.txt`. Order: readers first, then the Batch image.
 
 ## Operating notes
 
