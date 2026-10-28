@@ -225,7 +225,7 @@ python3.12 -m venv /tmp/dbt312 && /tmp/dbt312/bin/pip install -r infra/dbt/requi
 | | Aldi | Tesco | SuperValu | Dunnes |
 |---|---|---|---|---|
 | ID source | `aldi.ie/sitemap_products.xml` (18-digit IDs in product URLs) | Category crawl of `tesco.ie` with a real browser (patchright/Chrome); product IDs are 9-digit `tpnc` | `shop.supervalu.ie/sitemap.xml` product IDs, plus category-page crawl of 6 stores (store 364 plus 5550, 1708, 260, 1261, 276) | `dunnesstoresgrocery.com/sitemap.xml` (but see below) |
-| ID job on AWS? | Yes, daily, own image (`ie_supermarket_ids_job_definition`), skips if latest is under 20 h old | **No**: tesco.ie blocks AWS IPs; run weekly on the maintainer's Mac via launchd ([tesco_ids_local.md](tesco_ids_local.md)) | Yes, daily job on the scraper image; self-skips unless latest is over 7 days old | **No**: sitemap behind a Cloudflare challenge; `ids/latest` was rebuilt from raw data with `scripts/dunnes_ids_from_raw.py` (last 2026-10-07) |
+| ID job on AWS? | Yes, daily, own image (`ie_supermarket_ids_job_definition`), skips if latest is under 20 h old | **No**: tesco.ie blocks AWS IPs; run by hand on the maintainer's Mac ([tesco_ids_local.md](tesco_ids_local.md)); the weekly launchd schedule was removed 2026-10-28 | Yes, daily job on the scraper image; self-skips unless latest is over 7 days old | **No**: sitemap behind a Cloudflare challenge; `ids/latest` was rebuilt from raw data with `scripts/dunnes_ids_from_raw.py` (last 2026-10-07) |
 | API | `GET api.aldi.ie/v2/products/{id}` through `curl_cffi` impersonating Chrome 120 | `POST xapi.tesco.com` GraphQL `GetProduct` with an API key embedded in the script | Storefront gateway `GET /api/stores/{store}/products/{id}` | Same storefront gateway software at `storefrontgateway.dunnesstoresgrocery.com` |
 | Raw record | `{product_id, data, error}` | `{tpnc, data, error}` (key is `tpnc`) | `{product_id, store_id, data, error}` | `{product_id, store_id, data, error}` |
 | Rate control | concurrency 5, 0.5 s delay, 4 attempts with backoff | **Strict pacing**: 2.0 requests per second total, shared equally by the 5 chunks (0.4 req/s each), up to 8 attempts per ID with Retry-After and backoff | concurrency 5, 0.5 s delay | concurrency 5, 0.5 s delay |
@@ -240,7 +240,7 @@ Details worth knowing:
 - **Tesco 429 incident.** From 2026-08-09 Tesco put Akamai rate controls in front of its API; about 70% of the daily scrape was lost as `HTTP 429` or as silent empty responses. The fix in the code today is the pacer, Retry-After/backoff handling, classification of GraphQL error bodies sent with HTTP 200, and keeping still-throttled records out of the checkpoint so a re-run retries them. 2026-10-27's Tesco run shows `ok = planned` for chunk 0, so the fix works. [tesco-429-incident.md](tesco-429-incident.md) still says "open, unfixed as of 2026-09-02"; that header is out of date (it is useful history, with the per-day error table in `tesco-429-error-rate-history.tsv`). The Lambda gives Tesco jobs a 4-hour attempt timeout and only 0.25 vCPU / 1 GB (they wait on the pacer, so they use little CPU).
 - **Aldi** returns HTTP 200 with no `data` key for some IDs; that is counted as an *empty* record and checked against the 5% empty limit.
 - **Dunnes ID refresh** is frozen. If new Dunnes products appear, they are not scraped. The workaround script rebuilds the list from a recent complete raw scrape and keeps only IDs that returned data or failed transiently.
-- **Tesco ID refresh** (local, weekly, Sundays 06:00 Mac time): the S3 listing shows `ids/date=2026-10-11/progress.json` and `date=2026-10-18/progress.json` (crawl checkpoints) but `ids/latest` was last modified 2026-10-07, so the two most recent weekly crawls appear not to have published a new list. Why is **unverified**; check the log in `~/Library/Logs/supermarket/` on that Mac.
+- **Tesco ID refresh** (local, manual since 2026-10-28): `ids/latest` was last published 2026-10-07. The weekly launchd runs failed or hung (network change on 2026-10-11, a stall on 2026-10-18 that blocked every later run for 10 days) and a manual run on 2026-10-28 was refused by tesco.ie's security check from the current network. The chunk jobs keep using the 2026-10-07 list. See [tesco_ids_local.md](tesco_ids_local.md).
 
 ### 4.3 What a chunk does, step by step
 
@@ -384,6 +384,7 @@ State as updated late on 2026-10-27 (the rollout is in progress; re-run the chec
 | Stack parameters | `StatePrefix=dbt/state-shadow`, `LakeData=s3://ie-supermarket-data/ducklake-shadow/`, `ProcessedPrefix=s3://ie-supermarket-data/processed-shadow`, `ExecutionRoleArn` and `ScraperJobRoleArn` = `aws_batch_2` | same command |
 | Job definitions `ie_supermarket_dbt_job_definition`, `ie_supermarket_compact_job_definition` | Registered; revision 2 uses the newest image (revision 1 was the first image, whose tests failed on missing fixtures) | `aws batch describe-job-definitions` |
 | Schedule `supermarket-dbt-daily` (`cron(30 11-14 * * ? *)`) | **ENABLED**, writes only to the shadow prefixes | `aws scheduler get-schedule --name supermarket-dbt-daily` |
+| Lambda `supermarket_dbt_built_check` + schedule `supermarket-dbt-built-check` (`cron(0 15 * * ? *)`) | **Deployed 2026-10-28**: emails `dbt MISSING for <date>: <retailers>` when `built/{date}/<retailer>` markers are absent after the last dbt slot. Dry run: invoke with `{"date":"YYYY-MM-DD","dry_run":true}` | `aws lambda get-function --function-name supermarket_dbt_built_check` |
 | Schedule `supermarket-raw-compaction-daily` (`cron(30 15 * * ? *)`) | **ENABLED** (dates 2-7 days old only; enabled after the backfill below) | `aws scheduler get-schedule --name supermarket-raw-compaction-daily` |
 | Shadow catalog and runs | Seeded from the local database; three days (2026-10-24, 25, 26) built by manual `submit-job` runs, 12 `dbt/state-shadow/built/...` markers; lake matches the local database up to 2026-10-23 with no duplicates | `aws s3 ls s3://ie-supermarket-data/dbt/state-shadow/ --recursive` |
 | Production state (`dbt/state/`, `ducklake/`) | **Do not exist yet** (cutover pending); `landing/` exists (shared, written by the shadow runs) | `aws s3 ls` |
@@ -427,7 +428,7 @@ Sizes are current-version bytes from `aws s3 ls --recursive --summarize` on 2026
 | `ducklake/` (production) / `ducklake-shadow/` (shadow) | **DuckLake** data: Parquet files of the marts under `main/<table>/`. Never write there by hand. | dbt Batch job | DuckLake readers | Cleaned by weekly maintenance | shadow only so far |
 | `dbt/state/catalog.ducklake` (production) / `dbt/state-shadow/catalog.ducklake` | The DuckLake **catalog**: a small (~4 MB) DuckDB file listing tables, files and snapshots. Pushing it is the "commit". | dbt job, `seed_lake.py` | dbt job | Overwritten each run | shadow only |
 | `dbt/state*/archive/{date}/catalog.ducklake` | A dated copy of the catalog for rollback | dbt job | humans | 8 days by the draft lifecycle rule | shadow `archive/seed/` |
-| `dbt/state*/LOCK` | Mutual-exclusion lock object (content = run date). Stale after 3 h. | dbt job | dbt job | transient | |
+| `dbt/state*/LOCK` | Mutual-exclusion lock object (content = run date). Stale after 30 min. | dbt job | dbt job | transient | |
 | `dbt/state*/built/{date}/{retailer}` | Empty marker: that retailer-day was built and committed | dbt job | dbt job | Forever | |
 | `processed/all_supermarket_products.parquet` | Slim catalogue (`id, supermarket, title, title_cleaned, image_url`, rows with a title). Overwritten by each full dbt build. | dbt model `int_all_supermarket_products` | `ml/embeddings.py`, `ml_common` (`CATALOGUE_URI` default) | Overwritten | 4.9 MB |
 | `processed/embeddings/{model-slug}/product_title_embeddings.parquet` | Title vectors for three models (`microsoft-harrier-oss-v1-270m`, `jinaai-jina-embeddings-v5-text-small`, `sentence-transformers-all-MiniLM-L6-v2`) | `ml/embeddings.py` | dbt `int_product_title_embeddings`, `ml/agents.py` | Overwritten | 53-88 MB each |
@@ -535,7 +536,7 @@ Batch backfill (once the pipeline is live): submit the dbt job with `RUN_DATE=<d
 
 | Time | What happens | Status |
 |---|---|---|
-| 06:00 Sunday (Mac local time) | Weekly Tesco ID refresh via launchd (may not have published recently, see 4.2) | live, manual machine |
+| (manual) | Tesco ID refresh run by hand on the Mac (no schedule since 2026-10-28, see 4.2) | manual |
 | 08:00 | Rule `supermarket-scraper-daily` fires the Lambda, which submits 22 Batch jobs | live |
 | 08:01-08:02 | `aldi-ids` and `supervalu-ids` run (about 1 min). Tesco and Dunnes chunks start. | live |
 | 08:08-08:18 | Aldi chunks (each 2-3 min; start after `aldi-ids`) | live |
@@ -545,6 +546,7 @@ Batch backfill (once the pipeline is live): submit the dbt job with `RUN_DATE=<d
 | 10:49 | Last Tesco summary file is written; day's raw data complete | live |
 | 11:30, 12:30, 13:30, 14:30 | EventBridge Scheduler slots submit `ie_supermarket_dbt_job_definition` (14:30 is the "final" slot) | built; **dbt slots ENABLED (shadow)** |
 | 14:00 | `supermarket_summary_check` Lambda emails if anything is missing or failed | live |
+| 15:00 | `supermarket_dbt_built_check` Lambda emails if any retailer has no built marker for today | **ENABLED** |
 | 15:30 | Raw compaction job (dates 2-7 days old only) | **ENABLED** |
 | Any time | Any Batch job reaching FAILED emails via SNS | live |
 
@@ -569,7 +571,7 @@ Input: `SCHEDULED_TIME` (from the scheduler; the UTC date becomes `run_date`) or
 | some | any | any | all ready ones already built | nothing to build | 0 | final slot and some excluded: `dbt DEGRADED for <date>: n retailer(s) missing`; else log only |
 | some | any | any | at least one ready one not built | **build** (below) | 0 or non-zero | see below |
 
-4. **Build**: take the **lock** (an S3 object `LOCK`, created with a conditional write so two jobs cannot both win; a lock older than 3 hours is treated as left by a killed job and taken over; if held: alert `dbt NOT RUN for <date>` and exit 1). Then:
+4. **Build**: take the **lock** (an S3 object `LOCK`, created with a conditional write so two jobs cannot both win; a lock older than 30 minutes (a run takes about 2) is treated as left by a killed job and taken over; if held: alert `dbt NOT RUN for <date>` and exit 1). Then:
    1. Pull `catalog.ducklake`. Missing → alert `dbt NOT RUN for <date>: no catalog`, exit 1 (unless `ALLOW_FRESH_LAKE=1`).
    2. **Landing**: convert each ready retailer's raw day to `landing/.../data.parquet` ([landing.py](../infra/dbt/landing.py)).
    3. **dbt build** with target `batch`, `--vars` as in 7.2, `--exclude test_type:unit` plus the absent retailers' sources, plus `int_all_supermarket_products` when degraded. Failure → alert `dbt FAILED for <date>` ("Catalog was not updated"), exit with dbt's code.
@@ -829,7 +831,7 @@ Preconditions: understand the hazard in 4.3 (duplicates).
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `NOT RUN ... state locked by run '...' for X.Xh` | A previous job is still running, or was killed before releasing the lock | If under 3 h, wait. After 3 h the next run takes the lock over by itself. To clear it by hand once you are sure nothing runs: `aws s3 rm s3://ie-supermarket-data/dbt/state/LOCK` (shadow: `dbt/state-shadow/LOCK`). |
+| `NOT RUN ... state locked by run '...' for X.Xh` | A previous job is still running, or was killed before releasing the lock | If under 30 min, wait. After 30 min the next run takes the lock over by itself. To clear it by hand once you are sure nothing runs: `aws s3 rm s3://ie-supermarket-data/dbt/state/LOCK` (shadow: `dbt/state-shadow/LOCK`). |
 | `NOT RUN ... no catalog` | Lake not seeded, or `dbt/state/catalog.ducklake` deleted | Seed with `infra/dbt/seed_lake.py` (7.5) or restore a catalog from `dbt/state/archive/<date>/` (valid ~7 days). Never set `ALLOW_FRESH_LAKE=1` on production unless you mean to start an empty history. |
 | `dbt FAILED`, log shows a failed test | Data problem (9.4) | Fix/rescrape, resubmit with `RUN_DATE`. |
 | Job exits at once, "nothing ready yet" in log | Scrapes not finished (non-final slot) | Normal; a later slot retries. |

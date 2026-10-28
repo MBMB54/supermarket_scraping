@@ -1,4 +1,11 @@
-# IAM setup (least privilege) - draft, nothing applied
+# IAM setup (least privilege) - mostly draft
+
+**Update 2026-10-28:** the policies in `infra/iam/` for the scrapers and GitHub deploys are still drafts and
+the scrapers still run as `aws_batch_2`. Separately, two CloudFormation stacks have since created
+real roles: `supermarket-scraper-alerts` (the summary-check Lambda role) and `supermarket-dbt-batch`
+(`supermarket-dbt-job-role` for the dbt job, a Scheduler role, and a role for the built-marker check
+Lambda). The dbt job role follows `infra/iam/dbt-job-role-policy.json`. The raw compaction job reuses
+`aws_batch_2`. The text below is the original 2026-10-07 inspection.
 
 Policies are in `infra/iam/`. They were drafted from a read-only inspection on 2026-10-07; no IAM
 resources were created or changed. Account `557690579730`, region `eu-west-1`.

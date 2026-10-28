@@ -1,4 +1,4 @@
-# Scraper alerting (drafted, not applied)
+# Scraper alerting (deployed as stack `supermarket-scraper-alerts`)
 
 `batch-alerts.yaml` creates:
 
@@ -48,7 +48,7 @@ aws cloudformation delete-stack --stack-name supermarket-scraper-alerts
 - The local AWS CLI profile is the account root user; create a scoped IAM user/role for day-to-day use.
 
 
-# dbt Batch job (drafted, not applied)
+# dbt Batch job (deployed as stack `supermarket-dbt-batch`, shadow mode)
 
 `dbt-batch.yaml` defines the dbt and raw-compaction Batch job definitions, the dbt job role, and the
 EventBridge Scheduler slots; `iam/dbt-job-role-policy.json` is the same policy standalone and
@@ -59,3 +59,8 @@ that the lifecycle file is applied only after the historical raw compaction, is 
 ```bash
 aws cloudformation validate-template --template-body file://infra/dbt-batch.yaml
 ```
+
+Besides the job definitions and schedules, `dbt-batch.yaml` also deploys the `supermarket_dbt_built_check`
+Lambda (schedule `supermarket-dbt-built-check`, 15:00 UTC): it emails the alert topic when a retailer has
+no `built/{date}/` marker, which catches a Scheduler, Batch or job failure that produces no job at all.
+Test it without emailing: `aws lambda invoke --function-name supermarket_dbt_built_check --cli-binary-format raw-in-base64-out --payload '{"date":"2026-10-27","dry_run":true}' out.json`.

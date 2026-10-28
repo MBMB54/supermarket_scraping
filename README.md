@@ -1,38 +1,46 @@
-# UK Supermarket Price Scraping Platform
+# Irish Supermarket Price Tracker
 
 ![AWS](https://img.shields.io/badge/AWS-%23FF9900.svg?style=for-the-badge&logo=amazon-aws&logoColor=white)
 ![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)
 ![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
 
-A scalable cloud-native solution for monitoring grocery prices across major UK supermarkets, built with Docker containers and AWS serverless technologies.
+Scrapes product prices from four Irish supermarkets (**Tesco, Aldi, SuperValu, Dunnes Stores**) every
+day, keeps the raw responses in S3, and turns them into a price-history dataset with dbt and DuckDB.
 
-## 🚀 Key Features
-- **Multi-Supermarket Support**: Simultaneous scraping of Ocado, Tesco, and Aldi.
-- **AWS Batch Processing**: Containerized jobs with Fargate Spot instances
-- **Data Lake Architecture**: S3 storage with Parquet partitioning
-- **Automated Scheduling**: Lambda-driven cron jobs using AWS EventBridge
-- **Cost Optimization**: 70% savings through Spot instances and resource right-sizing
-
-## 🛠️ Technical Architecture
+## How it fits together
 
 ```mermaid
 graph TD
-    A[Scheduler Lambda] -->|Triggers| B[AWS Batch]
-    B -->|Runs| C[Docker Containers]
-    C -->|Stores Data| D[S3 Data Lake]
-    D -->|Query| E[Athena]
-    E -->|Visualize| F[QuickSight]
+    E[EventBridge 08:00 UTC] --> L[Scheduler Lambda]
+    L -->|ID jobs + 5 chunk jobs per retailer| B[AWS Batch on Fargate Spot]
+    B -->|gzipped JSONL + run summaries| R[(S3 raw/)]
+    S[EventBridge Scheduler 11:30-14:30 UTC] --> D[dbt Batch job]
+    R --> D
+    D -->|landing Parquet| LA[(S3 landing/)]
+    D -->|marts + price history| K[(DuckLake: Parquet + catalog)]
+    D -->|product catalogue| P[(S3 processed/)]
+    K --> N[Notebooks / ml/ / agents]
+    P --> N
 ```
 
-##  🌐   Future Roadmap
+- **Scraping** (live): per-retailer ID scripts and API scripts share `scraper_common/`, with a
+  data-quality gate and a run summary per chunk.
+- **Transformation** (rolling out, currently in shadow mode): `dbt/` builds staging, intermediate and mart
+  models; the daily price history lives in a DuckLake lakehouse (Parquet on S3 plus a small catalog).
+- **Analysis and ML**: `ml/`, `ml_common/` and `notebooks/` read the marts and the product catalogue.
 
-- Addition of new supermarkets - Sainsburys and Asda
-  
-- Price change alerts via SNS
+## Start here
 
-- Historical analysis to track long term inflation and compare prices between supermarkets
+- **[docs/infrastructure_guide.md](docs/infrastructure_guide.md)**: the full, beginner-friendly guide
+  (architecture, where every dataset is stored, all tests and gates, runbooks, costs).
+- [AGENTS.md](AGENTS.md): concise conventions for contributors and coding agents.
+- [docs/dbt_orchestration_plan.md](docs/dbt_orchestration_plan.md): design and rollout of the scheduled dbt pipeline.
+- [dbt/README.md](dbt/README.md): running dbt locally and the price-history model.
 
-- ML-powered price prediction and forecasting (SageMaker)
+## Quick commands
 
--
-
+```bash
+uv sync --group test --group dev
+uv run --group test pytest
+uv run ruff check . --extend-exclude notebooks
+```
