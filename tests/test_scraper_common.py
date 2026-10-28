@@ -10,7 +10,7 @@ from botocore.exceptions import ClientError
 from scraper_common.config import RunConfig, chunk_slice
 from scraper_common.http import Response, request_with_retry, retry_until
 from scraper_common.ids import IdsRejected, publish_ids
-from scraper_common.quality import RunStats, gate_failures
+from scraper_common.quality import RunStats, gate_failures, is_not_found
 from scraper_common.runner import checkpoint_key, run_scrape, summary_key
 from scraper_common.storage import Storage
 
@@ -272,3 +272,25 @@ def test_run_ids_job_fails_when_latest_is_stale(tmp_path, monkeypatch):
     assert run_ids_job("demo", empty, storage, min_age_hours=1) == 1
     os.utime(latest, None)
     assert run_ids_job("demo", empty, storage, min_age_hours=0) == 0
+
+
+TESCO_NOT_FOUND = (
+    'GraphQL error: [{"message": "product-not-found", "path": ["product"], "extensions": '
+    '{"code": "INTERNAL_SERVER_ERROR", "http": {"status": 404}, "serviceName": "discovery"}}]'
+)
+
+
+def test_is_not_found_matches_exact_strings_and_tesco_graphql_message():
+    for err in ("Not found in any store", "HTTP 404", "No product returned", TESCO_NOT_FOUND):
+        assert is_not_found(err)
+    for err in (None, "", "HTTP 429", "GraphQL 429", "GraphQL error: Too many requests", "timeout"):
+        assert not is_not_found(err)
+
+
+def test_tesco_not_found_counts_as_not_found_not_error():
+    s = RunStats()
+    s.add({"data": None, "error": TESCO_NOT_FOUND})
+    s.add({"data": None, "error": "GraphQL 429"}, retryable=True)
+    s.add({"data": None, "error": "HTTP 503"})
+    assert (s.not_found, s.error, s.retryable) == (1, 1, 1)
+    assert TESCO_NOT_FOUND[:80] not in s.error_samples  # stale IDs are not outage samples

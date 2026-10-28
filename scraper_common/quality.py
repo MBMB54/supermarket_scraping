@@ -2,6 +2,14 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 NOT_FOUND_ERRORS = frozenset({"Not found in any store", "HTTP 404", "No product returned"})
+# Tesco's not-found error is a long GraphQL message that embeds this marker, so it cannot be matched
+# exactly. Keep in sync with the is_stale_id_error macro in dbt/macros/stale_id.sql.
+NOT_FOUND_MARKERS = ("product-not-found",)
+
+
+def is_not_found(err) -> bool:
+    """True for errors that mean the product id no longer exists (a stale ID, not an outage)."""
+    return bool(err) and (err in NOT_FOUND_ERRORS or any(m in str(err) for m in NOT_FOUND_MARKERS))
 
 
 @dataclass
@@ -27,7 +35,7 @@ class RunStats:
         err = record.get("error")
         if retryable:
             self.retryable += 1
-        elif err in NOT_FOUND_ERRORS:
+        elif is_not_found(err):
             self.not_found += 1
         elif err:
             self.error += 1
@@ -35,7 +43,7 @@ class RunStats:
             self.ok += 1
         else:
             self.empty += 1
-        if err and err not in NOT_FOUND_ERRORS:
+        if err and not is_not_found(err):
             self.error_samples[str(err)[:80]] += 1
 
     def to_dict(self) -> dict:
