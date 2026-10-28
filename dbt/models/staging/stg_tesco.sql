@@ -29,7 +29,7 @@ SELECT
     data.details.allergenInfo AS allergen_info,
     data.foodIcons AS dietary_flags,
     -- Superset of foodIcons: also carries organic certification marks that foodIcons misses
-    list_transform(data.icons, x -> x.caption) AS certification_flags,
+    list_transform(data.icons, lambda x: x.caption) AS certification_flags,
     data.details.nutritionalClaims AS nutritional_claims,
     data.media.defaultImage.url AS image_url,
     NOT (data.title IS NULL AND data.promotions[1].metaData.seo.afterDiscountPrice IS NOT NULL)

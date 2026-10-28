@@ -62,12 +62,12 @@ SELECT
         ELSE trim(ingredients)
     END AS ingredients,
     list_transform(
-        list_filter(nutritional_claims, claim -> lower(claim.label) = 'contains'),
-        claim -> claim.value
+        list_filter(nutritional_claims, lambda claim: lower(claim.label) = 'contains'),
+        lambda claim: claim.value
     ) AS contains_allergens,
     list_transform(
-        list_filter(nutritional_claims, claim -> lower(claim.label) = 'may contain'),
-        claim -> claim.value
+        list_filter(nutritional_claims, lambda claim: lower(claim.label) = 'may contain'),
+        lambda claim: claim.value
     ) AS may_contain_allergens,
     CAST(NULL AS VARCHAR[]) AS dietary_flags,
     CAST(NULL AS BOOLEAN) AS is_vegan,

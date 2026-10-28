@@ -3,7 +3,7 @@
 {% macro allergens_from_json_map(col, status) %}
 list_filter(
     json_keys(CAST({{ col }} AS JSON)),
-    k -> json_extract_string(CAST({{ col }} AS JSON), '$.' || k) {{ "= 'Contains'" if status == 'contains' else "LIKE '%May Contain%'" }}
+    lambda k: json_extract_string(CAST({{ col }} AS JSON), '$.' || k) {{ "= 'Contains'" if status == 'contains' else "LIKE '%May Contain%'" }}
 )::VARCHAR[]
 {% endmacro %}
 
@@ -12,8 +12,8 @@ list_filter(
 {% macro allergens_from_structs(col, status) %}
 flatten(
     list_transform(
-        list_filter({{ col }}, x -> {{ "x.name = 'Contains'" if status == 'contains' else "x.name ILIKE '%may contain%'" }}),
-        x -> x.values
+        list_filter({{ col }}, lambda x: {{ "x.name = 'Contains'" if status == 'contains' else "x.name ILIKE '%may contain%'" }}),
+        lambda x: x.values
     )
 )::VARCHAR[]
 {% endmacro %}

@@ -53,8 +53,8 @@ SELECT
     CAST(NULL AS DATE) AS discount_end_date,
     array_to_string(
         list_filter(
-            list_transform(ingredients, x -> trim(regexp_replace(x, '<[^>]+>', '', 'g'))),
-            x -> length(x) > 0
+            list_transform(ingredients, lambda x: trim(regexp_replace(x, '<[^>]+>', '', 'g'))),
+            lambda x: length(x) > 0
         ),
         ', '
     )::VARCHAR AS ingredients,
@@ -68,7 +68,7 @@ SELECT
     -- Organic certification marks only appear in the badge captions, not in foodIcons
     (
         {{ has_flag('dietary_flags', 'Organic') }}
-        OR coalesce(len(list_filter(certification_flags, x -> x ILIKE '%organic%')) > 0, false)
+        OR coalesce(len(list_filter(certification_flags, lambda x: x ILIKE '%organic%')) > 0, false)
     )::BOOLEAN AS is_organic,
     -- No nutrition-panel threshold here (unlike SuperValu): Tesco's panel is free text and a
     -- 3g/100g cut-off flags plenty of items not marketed as low fat. "low in saturated fat"
@@ -80,7 +80,7 @@ SELECT
         OR coalesce(
             len(list_filter(
                 nutritional_claims,
-                x -> lower(x) LIKE '%low fat%' OR lower(x) LIKE '%fat free%' OR lower(x) LIKE '%low in fat%'
+                lambda x: lower(x) LIKE '%low fat%' OR lower(x) LIKE '%fat free%' OR lower(x) LIKE '%low in fat%'
             )) > 0,
             false
         )
