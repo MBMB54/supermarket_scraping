@@ -160,3 +160,11 @@ macros:
       - name: error
         type: string
         description: Raw error column.
+  - name: embedding_view
+    description: Body of a per-spec embedding relation (emb_*); selects one spec's current vectors from fct_embeddings cast to FLOAT[dim], with spec_id and dim taken from the embedding_specs var.
+    arguments:
+      - name: key
+        type: string
+        description: Key in the embedding_specs var (e.g. gemma2_text).
+  - name: read_embedding_parts
+    description: Query over every part file of every spec in the embedding store (embeddings_store_prefix), with a vector_index column guaranteed to exist (NULL in parts written before it was added).

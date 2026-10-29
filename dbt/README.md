@@ -36,7 +36,35 @@ change this: the failures are in Fusion's parser/type inference, not in how JSON
 - `use_landing` (default false): read the one-file Parquet copy `{landing_prefix}/{retailer}/scraped_date={run_date}/data.parquet` that `infra/dbt/landing.py` writes, instead of the raw gzipped JSONL. The Batch job sets it; local runs and `scripts/backfill.py` read raw. `landing_prefix` defaults to `s3://ie-supermarket-data/landing`.
 - `retailers` (default all four): retailers built this run. Models and tests that span retailers loop over it; the scheduled job narrows it on a degraded day (and lowers `listing_min_rows`, default 30000), and backfills pass only retailers with a raw partition.
 - `parquet_output_prefix`: where dbt writes Parquet (default `s3://ie-supermarket-data/processed`); override to test.
-- `embeddings_input_prefix`: where dbt reads embeddings (default same prefix).
+- `embeddings_input_prefix`: where dbt reads the legacy `int_product_title_embeddings` input (default same prefix).
+- `embeddings_store_prefix` (default `s3://ie-supermarket-data/ml`): root of the ml_common embedding store read by `models/embeddings/`. `embedding_specs`: per-spec fixed-size relations to generate (`key -> {spec_id, dim}`).
+
+## Embeddings (`models/embeddings/`, tag `embeddings`)
+
+Vectors come from the `ml_common` store (`docs/ml_framework.md`), read in place from `{embeddings_store_prefix}/embeddings/<spec_id>/{part-*.parquet,manifest.json}`. Only specs copied to `s3://ie-supermarket-data/ml/` are visible to dbt; specs that exist only in the private Hugging Face bucket (`hf://buckets/...`) cannot be read by dbt. Today that is `gemma2-text` (`268dad232ccc02bc`, 768-d).
+
+```
+parts + manifests -> stg_embedding_parts / stg_embedding_vectors / stg_embedding_manifests (views)
+  -> int_embedding_current_keys (latest-ok selection, unit tested)
+  -> fct_embeddings (long, FLOAT[])  -> dim_embedding_specs (one row per spec)
+  -> emb_<spec> (fixed FLOAT[dim], one per spec, via macro embedding_view)
+```
+
+- `fct_embeddings`: one row per `(spec_id, supermarket, id, vector_index)`, only the current embedding (every vector of the newest successful `embedded_at`, same rule as `ml_common.table.latest_ok`; parts are append-only, so a changed title or image adds a row and the older one is ignored). Variable-length `FLOAT[]`, no title or image columns: join to `fct_product_listings` on `(supermarket, id)`; the store also holds products no longer listed (warn test `assert_embedded_products_in_listings`), so inner join.
+- `dim_embedding_specs`: manifest metadata plus measured `dim`, `n_items`, `n_vectors` and time range (the manifest's `dim` is NULL without Matryoshka truncation).
+- `emb_<spec>`: materialized as a **table**, because `array_cosine_similarity`/`array_distance` and an HNSW index need a fixed-size `ARRAY`, and a table stores it natively (a view would re-cast every query and cannot be indexed). Cost is a second copy (~150 MB for 50k x 768).
+
+```sql
+SELECT l.title, array_cosine_similarity(e.embedding, q.embedding) AS sim
+FROM emb_gemma2_text e JOIN fct_product_listings l USING (supermarket, id), (SELECT embedding FROM emb_gemma2_text WHERE id = '...' AND supermarket = 'tesco') q
+ORDER BY sim DESC LIMIT 10;
+```
+
+**Add a spec**: copy its `embeddings/<spec_id>/` folder to the store prefix; it appears in `fct_embeddings` and `dim_embedding_specs` on the next build. To expose a fixed-size relation: add `key: {spec_id, dim}` under `embedding_specs` in `dbt_project.yml`, create `models/embeddings/emb_<key>.sql` containing `{{ embedding_view('<key>') }}` (with `config(materialized='table')`), and add it to `schema.yml`. `assert_embedding_dims` fails if the configured `dim` differs from the data.
+
+**Multi-vector models**: each item has `vector_index` 0..n-1 sharing one `embedded_at`; they stay in the long tables and in `emb_<spec>` as separate rows. Query with `max()` over the item's vectors (late interaction) as needed.
+
+The scheduled Batch job runs a plain `dbt build`; it needs `--exclude tag:embeddings` (or the store prefix present) until the embeddings models are wanted there. The unit test uses only primitive columns because Fusion unit tests reject `LIST` columns.
 
 ## Batch target (DuckLake)
 

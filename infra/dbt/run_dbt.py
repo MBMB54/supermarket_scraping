@@ -88,7 +88,8 @@ def run_dbt(run_date: str, ready: list[str]) -> int:
     # Absent retailers' sources and everything downstream of them are skipped. The processed/
     # catalogue export is skipped too on a degraded day: it would overwrite the full file ml/ reads
     # with a subset.
-    exclude = ["test_type:unit"]
+    # The embeddings models read s3://.../ml/ (not in the job role's read policy yet); built locally.
+    exclude = ["test_type:unit", "tag:embeddings"]
     exclude += [f"source:external_source.{r}+" for r in RETAILERS if r not in ready]
     exclude += ["int_all_supermarket_products"] if degraded else []
     cmd = [

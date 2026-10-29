@@ -37,6 +37,14 @@ vars:
   landing_prefix: "s3://ie-supermarket-data/landing"
   # Prefix dbt READS embeddings from ({prefix}/embeddings/{embedding_model}/...), written by ml/embeddings.py.
   embeddings_input_prefix: "s3://ie-supermarket-data/processed"
+  # Root of the ml_common embedding store dbt READS for the embeddings models (models/embeddings/):
+  # {prefix}/embeddings/<spec_id>/{part-*.parquet,manifest.json}. Only specs copied here are visible
+  # to dbt; specs that live only in the private Hugging Face bucket are not.
+  embeddings_store_prefix: "s3://ie-supermarket-data/ml"
+  # Per-spec fixed-size relations (macro embedding_view, one models/embeddings/emb_<key>.sql each):
+  # key -> {spec_id, dim}. dim must equal the stored vector length (assert_embedding_dims checks it).
+  embedding_specs:
+    gemma2_text: {spec_id: "268dad232ccc02bc", dim: 768}
 
 models:
   dbt_ie_supermarket_analytics:
@@ -50,6 +58,10 @@ models:
       # DuckLake catalog attached as `lake`; staging/intermediate stay in the in-memory main DB.
       # Local targets keep everything in their single DuckDB file.
       +database: "{{ 'lake' if target.name == 'batch' else target.database }}"
+
+    embeddings:
+      +materialized: table
+      +tags: ["embeddings"]
 
 flags:
   require_generic_test_arguments_property: true

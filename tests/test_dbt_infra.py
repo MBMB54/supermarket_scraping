@@ -369,7 +369,7 @@ def test_dbt_command_skips_absent_retailers_and_the_catalogue_export(monkeypatch
     assert (
         "source:external_source.tesco+" in exclude and "source:external_source.aldi+" not in exclude
     )
-    assert "int_all_supermarket_products" in exclude
+    assert "int_all_supermarket_products" in exclude and "tag:embeddings" in exclude
     dbt_vars = json.loads(cmd[cmd.index("--vars") + 1])
     assert dbt_vars["retailers"] == ["aldi", "dunnes"] and dbt_vars["listing_min_rows"] == 4500
     run_dbt.run_dbt("2026-01-01", list(run_dbt.RETAILERS))

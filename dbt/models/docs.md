@@ -98,3 +98,17 @@
 
 {% docs col_is_active %}TRUE when last_seen_date is within the retailer's active_grace_days of the latest scrape date loaded for the same retailer, i.e. the product is still being listed. Live prices: is_current AND is_active.{% enddocs %}
 
+
+{# Embeddings models (models/embeddings/). #}
+
+{% docs col_emb_spec_id %}Embedding spec id: a hash of everything that changes the vectors (model, revision, modality, prefix, normalisation, dim, dtype, image_tokens). Also the folder name in the ml_common store.{% enddocs %}
+
+{% docs col_emb_vector_index %}Position of the vector within the item's embedding: 0 for single-vector models (and for parts written before the column existed), 0..n-1 for multi-vector models.{% enddocs %}
+
+{% docs col_embedding %}Embedding vector, float32. fct_embeddings holds a variable-length list (sizes differ per spec); the per-spec emb_* relations hold a fixed-size ARRAY for array_cosine_similarity and HNSW indexes.{% enddocs %}
+
+{% docs col_content_key %}Hash of the input content (title text or image bytes) the vector was computed from; a changed title or image gets a new key and a new embedding.{% enddocs %}
+
+{% docs col_embedded_at %}Timestamp (UTC) the embedding was computed. A multi-vector item's vectors share one value.{% enddocs %}
+
+{% docs col_emb_model_id %}Hugging Face model id the spec embeds with.{% enddocs %}

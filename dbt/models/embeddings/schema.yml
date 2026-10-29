@@ -1,0 +1,222 @@
+version: 2
+
+models:
+  - name: stg_embedding_parts
+    description: >
+      Bookkeeping columns (no vector) of every row of every spec in the ml_common embedding store
+      (embeddings_store_prefix), including superseded embeddings and error rows. Parts are
+      append-only, so one product can appear several times per spec. vector_index is 0 where older
+      parts lack the column.
+    columns:
+      - name: id
+        description: "{{ doc('col_id') }}"
+      - name: supermarket
+        description: "{{ doc('col_supermarket') }}"
+      - name: vector_index
+        description: "{{ doc('col_emb_vector_index') }}"
+      - name: content_key
+        description: "{{ doc('col_content_key') }}"
+      - name: spec_id
+        description: "{{ doc('col_emb_spec_id') }}"
+      - name: model_id
+        description: "{{ doc('col_emb_model_id') }}"
+      - name: model_revision
+        description: Pinned git revision (commit sha) of the model.
+      - name: modality
+        description: "What was embedded: text, image or image_text."
+      - name: embedded_at
+        description: "{{ doc('col_embedded_at') }}"
+      - name: status
+        description: "ok when a vector was produced, error otherwise (error rows are retried by ml_common)."
+      - name: error
+        description: Error message for status = error, NULL otherwise.
+
+  - name: stg_embedding_vectors
+    description: Vectors of the successful rows of every spec in the store, keyed by (spec_id, supermarket, id, vector_index, embedded_at); includes superseded embeddings.
+    columns:
+      - name: spec_id
+        description: "{{ doc('col_emb_spec_id') }}"
+      - name: supermarket
+        description: "{{ doc('col_supermarket') }}"
+      - name: id
+        description: "{{ doc('col_id') }}"
+      - name: vector_index
+        description: "{{ doc('col_emb_vector_index') }}"
+      - name: embedded_at
+        description: "{{ doc('col_embedded_at') }}"
+      - name: embedding
+        description: "{{ doc('col_embedding') }}"
+
+  - name: int_embedding_current_keys
+    description: >
+      Keys of the current embeddings: per (spec, supermarket, id) every vector of the newest
+      successful embedding (mirrors ml_common.table.latest_ok). Unit tested; fct_embeddings adds the vectors.
+    columns:
+      - name: spec_id
+        description: "{{ doc('col_emb_spec_id') }}"
+      - name: supermarket
+        description: "{{ doc('col_supermarket') }}"
+      - name: id
+        description: "{{ doc('col_id') }}"
+      - name: vector_index
+        description: "{{ doc('col_emb_vector_index') }}"
+      - name: content_key
+        description: "{{ doc('col_content_key') }}"
+      - name: embedded_at
+        description: "{{ doc('col_embedded_at') }}"
+
+  - name: stg_embedding_manifests
+    description: One row per embedding spec, from the manifest.json ml_common writes next to the spec's parts.
+    columns:
+      - name: spec_id
+        description: "{{ doc('col_emb_spec_id') }}"
+      - name: name
+        description: Registry name of the spec (ml_common/specs.py), e.g. gemma2-text.
+      - name: model_id
+        description: "{{ doc('col_emb_model_id') }}"
+      - name: model_revision
+        description: Pinned git revision (commit sha) of the model.
+      - name: modality
+        description: "What is embedded: text, image or image_text."
+      - name: prefix
+        description: Literal text prepended to text inputs before embedding (empty for image specs).
+      - name: image_tokens
+        description: Vision token budget per image; NULL for text specs and the model default.
+
+  - name: fct_embeddings
+    description: >
+      Current embeddings of all specs, long format: one row per (spec, product, vector). Mirrors
+      ml_common.table.latest_ok: the successful rows with the newest embedded_at per (spec, supermarket,
+      id). Different vector sizes and multi-vector models coexist. Carries no title or image columns;
+      join to fct_product_listings on (supermarket, id). Use the emb_* relations for similarity search.
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [spec_id, supermarket, id, vector_index]
+    columns:
+      - name: spec_id
+        description: "{{ doc('col_emb_spec_id') }}"
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_embedding_specs')
+                field: spec_id
+      - name: supermarket
+        description: "{{ doc('col_supermarket') }}"
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['tesco','aldi','dunnes','supervalu']
+      - name: id
+        description: "{{ doc('col_id') }}"
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: vector_index
+        description: "{{ doc('col_emb_vector_index') }}"
+        data_type: integer
+        data_tests:
+          - not_null
+          - accepted_range:
+              arguments:
+                min_value: 0
+      - name: embedding
+        description: "{{ doc('col_embedding') }}"
+        data_type: float[]
+        data_tests:
+          - not_null
+      - name: content_key
+        description: "{{ doc('col_content_key') }}"
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: embedded_at
+        description: "{{ doc('col_embedded_at') }}"
+        data_type: timestamp
+        data_tests:
+          - not_null
+
+  - name: dim_embedding_specs
+    description: >
+      One row per embedding spec in the store: manifest metadata plus statistics measured from the
+      data (dim is the real vector length, not the manifest's dim, which is NULL without truncation).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [spec_id]
+      - min_row_count:
+          arguments:
+            min_rows: 1
+    columns:
+      - name: spec_id
+        description: "{{ doc('col_emb_spec_id') }}"
+        data_tests:
+          - not_null
+      - name: name
+        description: Registry name of the spec (ml_common/specs.py), e.g. gemma2-text.
+        data_tests:
+          - not_null
+      - name: model_id
+        description: "{{ doc('col_emb_model_id') }}"
+      - name: model_revision
+        description: Pinned git revision (commit sha) of the model.
+      - name: modality
+        description: "What is embedded: text, image or image_text."
+      - name: prefix
+        description: Literal text prepended to text inputs before embedding (empty for image specs).
+      - name: dim
+        description: Length of the stored vectors, measured from fct_embeddings. NULL for a spec with no successful embeddings.
+      - name: image_tokens
+        description: Vision token budget per image; NULL for text specs and the model default.
+      - name: n_items
+        description: Number of distinct (supermarket, id) with a current embedding.
+      - name: n_vectors
+        description: Number of current vectors (equals n_items for single-vector specs).
+      - name: embedded_from
+        description: Earliest successful embedding timestamp, including superseded ones.
+      - name: embedded_to
+        description: Latest successful embedding timestamp.
+
+  - name: emb_gemma2_text
+    description: >
+      Current gemma2-text (embeddinggemma-2, normalised title_cleaned, 768-d) vectors as a fixed
+      FLOAT[768] ARRAY, ready for array_cosine_similarity / array_distance and an HNSW index.
+      Generated by macro embedding_view from the embedding_specs var.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [supermarket, id, vector_index]
+      - min_row_count:
+          arguments:
+            min_rows: 45000
+    columns:
+      - name: supermarket
+        description: "{{ doc('col_supermarket') }}"
+        data_tests:
+          - not_null
+      - name: id
+        description: "{{ doc('col_id') }}"
+        data_tests:
+          - not_null
+      - name: vector_index
+        description: "{{ doc('col_emb_vector_index') }}"
+        data_tests:
+          - not_null
+          - accepted_range:
+              arguments:
+                min_value: 0
+      - name: embedding
+        description: "{{ doc('col_embedding') }} Fixed FLOAT[768] here."
+        data_tests:
+          - not_null
+      - name: content_key
+        description: "{{ doc('col_content_key') }}"
+      - name: embedded_at
+        description: "{{ doc('col_embedded_at') }}"
