@@ -54,7 +54,7 @@ S3 stays the source of truth for scraped and dbt data. The store is the working 
 
 Clean schema (new specs): `id, supermarket, content_key, spec_id, model_id, model_revision, modality, embedding (list<float32>), embedded_at, status, error`.
 
-`harrier-title` (`dbt_compatible`): `id, supermarket, title, title_cleaned, title_embedding, embedding_model, embedded_at, content_key, spec_id, model_revision, status, error`, i.e. a superset of what `int_product_title_embeddings` reads. Error rows have a null `title_embedding`; filter `status = 'ok'` before pointing dbt at it.
+All specs, including `harrier-title`, use this one schema; dbt models select from it per spec. Error rows have a null `embedding`; filter `status = 'ok'` before reading.
 
 ## Running
 

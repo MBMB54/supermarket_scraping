@@ -34,8 +34,7 @@ class EmbeddingSpec:
     `prefix` is the literal text prepended to text inputs (resolved from the model's own prompt
     table when the spec is created, never a prompt name). `dim` is a Matryoshka truncation (None
     keeps the native size); `image_tokens` is the vision token budget per image (None keeps the
-    model default; fewer tokens is much faster but coarser). `dbt_compatible` writes the column layout dbt's
-    `int_product_title_embeddings` reads; the other operational fields never affect the id.
+    model default; fewer tokens is much faster but coarser). The other operational fields never affect the id.
     """
 
     name: str
@@ -50,7 +49,6 @@ class EmbeddingSpec:
     dim: int | None = None
     dtype: str = "float32"
     image_tokens: int | None = None
-    dbt_compatible: bool = False
     disabled_configs: tuple[str, ...] = ()
     trust_remote_code: bool = False
     batch_size: int = 32
@@ -74,8 +72,7 @@ class EmbeddingSpec:
 
     @property
     def catalogue_columns(self) -> list[str]:
-        extra = ("title",) if self.dbt_compatible else ()
-        return [c for c in ("id", "supermarket", *extra, self.text_field, self.image_field) if c]
+        return [c for c in ("id", "supermarket", self.text_field, self.image_field) if c]
 
 
 def resolve_revision(model_id: str) -> str:
@@ -132,7 +129,6 @@ REGISTRY: dict[str, EmbeddingSpec] = {
             text_field="title_cleaned",
             prefix=HARRIER_PROMPT,
             batch_size=128,
-            dbt_compatible=True,
             trust_remote_code=True,
         ),
         EmbeddingSpec(

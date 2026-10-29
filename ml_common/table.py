@@ -52,21 +52,6 @@ def build_rows(
         pl.lit(spec.spec_id).alias("spec_id"),
         pl.lit(spec.revision).alias("model_revision"),
     ]
-    if spec.dbt_compatible:
-        return rows.with_columns(vectors.alias("title_embedding"), *meta).select(
-            "id",
-            "supermarket",
-            "title",
-            spec.text_field,
-            "title_embedding",
-            pl.lit(spec.model_id).alias("embedding_model"),
-            "embedded_at",
-            "content_key",
-            "spec_id",
-            "model_revision",
-            "status",
-            "error",
-        )
     return rows.with_columns(
         vectors,
         *meta,

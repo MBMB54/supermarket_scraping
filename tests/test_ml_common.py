@@ -222,7 +222,7 @@ def test_limit_caps_rows_per_run(tmp_path):
     assert run(tmp_path, TEXT, catalogue())[0].embedded == 1
 
 
-def test_clean_schema_and_dbt_schema(tmp_path):
+def test_table_schema(tmp_path):
     run(tmp_path, TEXT, catalogue())
     clean = table.read_table(Storage(str(tmp_path)), TEXT)
     assert clean.columns == [
@@ -239,18 +239,6 @@ def test_clean_schema_and_dbt_schema(tmp_path):
         "error",
     ]
     assert clean.schema["embedding"] == pl.List(pl.Float32)
-
-    run(tmp_path, HARRIER, catalogue())
-    dbt = table.read_table(Storage(str(tmp_path)), HARRIER)
-    assert dbt.columns[:6] == [
-        "id",
-        "supermarket",
-        "title",
-        "title_cleaned",
-        "title_embedding",
-        "embedding_model",
-    ]
-    assert dbt["embedding_model"].unique().to_list() == ["microsoft/harrier-oss-v1-270m"]
 
 
 def test_image_specs_load_bytes_from_store_and_record_missing(tmp_path):
