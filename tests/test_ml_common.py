@@ -1,5 +1,6 @@
 import hashlib
 from dataclasses import replace
+from datetime import UTC, datetime
 
 import polars as pl
 import pytest
@@ -228,6 +229,7 @@ def test_table_schema(tmp_path):
     assert clean.columns == [
         "id",
         "supermarket",
+        "vector_index",
         "content_key",
         "spec_id",
         "model_id",
@@ -316,3 +318,40 @@ def test_remote_reads_retry_transient_failures(monkeypatch):
     monkeypatch.setattr(storage.fs, "cat_file", flaky)
     assert storage.read_bytes("a/b.bin") == b"x"
     assert calls["n"] == 3
+
+
+def test_new_rows_are_vector_zero_and_legacy_parts_read_as_vector_zero(tmp_path):
+    run(tmp_path, TEXT, catalogue())
+    store = Storage(str(tmp_path))
+    current = table.read_table(store, TEXT)
+    assert current["vector_index"].unique().to_list() == [0]
+    legacy = current.drop("vector_index").head(1).with_columns(id=pl.lit("legacy"))
+    store.append_parquet(legacy, TEXT.table_prefix)
+    merged = table.read_table(store, TEXT)
+    assert merged["vector_index"].null_count() == 0
+    assert merged.filter(pl.col("id") == "legacy")["vector_index"].to_list() == [0]
+
+
+def test_latest_ok_keeps_every_vector_of_the_newest_embedding_only():
+    t0, t1 = datetime(2026, 1, 1, tzinfo=UTC), datetime(2026, 2, 1, tzinfo=UTC)
+
+    def rows(item, embedded_at, n):
+        return [
+            {
+                "id": item,
+                "supermarket": "s",
+                "vector_index": i,
+                "embedded_at": embedded_at,
+                "status": "ok",
+                "embedding": [float(i)],
+            }
+            for i in range(n)
+        ]
+
+    stale_then_new = pl.DataFrame(rows("a", t0, 3) + rows("a", t1, 2) + rows("b", t0, 1))
+    current = table.latest_ok(stale_then_new).sort("id", "vector_index")
+    assert current.select("id", "vector_index", "embedded_at").rows() == [
+        ("a", 0, t1),
+        ("a", 1, t1),
+        ("b", 0, t0),
+    ]

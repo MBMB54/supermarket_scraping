@@ -29,16 +29,24 @@ def read_done(storage: Storage, spec: EmbeddingSpec) -> pl.DataFrame:
 
 
 def read_table(storage: Storage, spec: EmbeddingSpec) -> pl.DataFrame:
-    return pl.concat([storage.read_parquet(k) for k in part_keys(storage, spec)])
+    """All rows of a spec; parts written before `vector_index` existed read as vector 0."""
+    table = pl.concat(
+        [storage.read_parquet(k) for k in part_keys(storage, spec)], how="diagonal_relaxed"
+    )
+    if "vector_index" not in table.columns:
+        return table.with_columns(pl.lit(0, dtype=pl.Int32).alias("vector_index"))
+    return table.with_columns(pl.col("vector_index").fill_null(0))
 
 
 def latest_ok(table: pl.DataFrame) -> pl.DataFrame:
-    """Current vector per (id, supermarket): the newest successful row, ignoring stale ones."""
-    return (
-        table.filter(pl.col("status") == OK)
-        .sort("embedded_at")
-        .unique(subset=["id", "supermarket"], keep="last", maintain_order=True)
-    )
+    """Current vectors per (id, supermarket): every vector of the newest successful embedding.
+
+    A multi-vector item is written in one chunk, so its vectors share one `embedded_at`; older
+    embeddings of the same item (a changed title or image) are dropped whole.
+    """
+    ok = table.filter(pl.col("status") == OK)
+    newest = pl.col("embedded_at") == pl.col("embedded_at").max().over(["id", "supermarket"])
+    return ok.filter(newest)
 
 
 def build_rows(
@@ -57,9 +65,11 @@ def build_rows(
         *meta,
         pl.lit(spec.model_id).alias("model_id"),
         pl.lit(spec.modality).alias("modality"),
+        pl.lit(0, dtype=pl.Int32).alias("vector_index"),
     ).select(
         "id",
         "supermarket",
+        "vector_index",
         "content_key",
         "spec_id",
         "model_id",
