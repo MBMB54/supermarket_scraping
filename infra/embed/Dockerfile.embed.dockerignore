@@ -1,0 +1,7 @@
+# BuildKit uses this instead of the repo-root .dockerignore (which hides infra/ for the scraper
+# image) when building infra/embed/Dockerfile.embed.
+*
+!scraper_common/
+!ml_common/
+!infra/embed/
+**/__pycache__

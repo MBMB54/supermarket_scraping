@@ -1,0 +1,22 @@
+# Build from the repo root (BuildKit, so Dockerfile.embed.dockerignore applies):
+#   docker build --platform linux/amd64 -f infra/embed/Dockerfile.embed -t ie-supermarket-embed .
+# CPU-only text embedding (infra/embed/run_embed.py). The model snapshots are NOT baked in: they
+# download from the Hugging Face Hub (public, ungated, pinned by revision) into HF_HOME on the first
+# encode of a run, so quiet days that find nothing new never fetch them (docs/ml_embed_job.md).
+FROM python:3.14-slim
+
+ENV PYTHONUNBUFFERED=1 HF_HOME=/tmp/hf HF_HUB_DISABLE_TELEMETRY=1 TOKENIZERS_PARALLELISM=false
+WORKDIR /app
+
+# CPU wheels first: PyPI's torch/torchvision are the CUDA builds (GBs of nvidia-* packages).
+# requirements.txt then finds them already satisfied.
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu \
+    torch==2.12.0+cpu torchvision==0.27.0+cpu
+COPY infra/embed/requirements.txt infra/embed/requirements.txt
+RUN pip install --no-cache-dir -r infra/embed/requirements.txt
+
+COPY scraper_common/ scraper_common/
+COPY ml_common/ ml_common/
+COPY infra/embed/run_embed.py infra/embed/run_embed.py
+
+CMD ["python", "infra/embed/run_embed.py"]

@@ -1,0 +1,158 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Text embedding (ml_common: gemma2-text, harrier-title) as an AWS Batch Fargate job that an
+  EventBridge rule submits whenever the dbt job succeeds. DRAFT, not deployed; design, measurements
+  and deploy order in docs/ml_embed_job.md. The alert topic comes from batch-alerts.yaml.
+
+Parameters:
+  Image:
+    Type: String
+    Description: ECR URI of the image built from infra/embed/Dockerfile.embed
+  JobQueueArn:
+    Type: String
+  ExecutionRoleArn:
+    Type: String
+    Description: ECS task execution role the other job definitions use (ECR pull, CloudWatch logs)
+  AlertTopicArn:
+    Type: String
+  Bucket:
+    Type: String
+    Default: ie-supermarket-data
+  EmbeddingsStore:
+    Type: String
+    Default: s3://ie-supermarket-data/ml
+    Description: Store root; the job role can write only under ml/ (iam/embed-job-role-policy.json).
+  CatalogueUri:
+    Type: String
+    Default: s3://ie-supermarket-data/processed/all_supermarket_products.parquet
+    Description: "Shadow week: s3://ie-supermarket-data/processed-shadow/all_supermarket_products.parquet"
+  EmbedSpecs:
+    Type: String
+    Default: "gemma2-text,harrier-title"
+    Description: Text specs only.
+  MaxFailureRate:
+    Type: String
+    Default: "0.05"
+  TriggerState:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [ENABLED, DISABLED]
+    Description: Deploys DISABLED. Enable once a manual run has passed (docs/ml_embed_job.md, deploy step 5).
+  DbtJobDefinitionName:
+    Type: String
+    Default: ie_supermarket_dbt_job_definition
+  DbtJobName:
+    Type: String
+    Default: dbt-daily
+
+Resources:
+  EmbedJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: supermarket-embed-job-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - {Effect: Allow, Principal: {Service: ecs-tasks.amazonaws.com}, Action: "sts:AssumeRole"}
+      Policies:
+        - PolicyName: embed-job
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: "s3:GetObject"
+                Resource:
+                  - !Sub "arn:aws:s3:::${Bucket}/processed/*"
+                  - !Sub "arn:aws:s3:::${Bucket}/processed-shadow/*"
+              - Effect: Allow
+                Action: ["s3:GetObject", "s3:PutObject"]
+                Resource: !Sub "arn:aws:s3:::${Bucket}/ml/*"
+              # Tables are append-only; only the lock is ever deleted.
+              - {Effect: Allow, Action: "s3:DeleteObject", Resource: !Sub "arn:aws:s3:::${Bucket}/ml/_state/*"}
+              # Not prefix-conditioned: s3fs probes the bucket root (makedirs/exists) before writing.
+              - {Effect: Allow, Action: "s3:ListBucket", Resource: !Sub "arn:aws:s3:::${Bucket}"}
+              - {Effect: Allow, Action: "sns:Publish", Resource: !Ref AlertTopicArn}
+
+  EmbedJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      JobDefinitionName: ie_supermarket_embed_job_definition
+      Type: container
+      PlatformCapabilities: [FARGATE]
+      # The first run embeds every harrier-title row (~50k, up to ~80 min at the slow estimate).
+      Timeout: {AttemptDurationSeconds: 10800}
+      # A reclaimed Spot task fails the job (alert); the diff resumes from the parts already written.
+      RetryStrategy: {Attempts: 1}
+      ContainerProperties:
+        Image: !Ref Image
+        Command: ["python", "infra/embed/run_embed.py"]
+        ExecutionRoleArn: !Ref ExecutionRoleArn
+        JobRoleArn: !GetAtt EmbedJobRole.Arn
+        ResourceRequirements:
+          - {Type: VCPU, Value: "4"}
+          - {Type: MEMORY, Value: "8192"}
+        NetworkConfiguration: {AssignPublicIp: ENABLED}  # Hugging Face Hub downloads
+        # The image is built for x86_64; on Apple Silicon build with --platform linux/amd64.
+        RuntimePlatform: {CpuArchitecture: X86_64, OperatingSystemFamily: LINUX}
+        Environment:
+          - {Name: S3_BUCKET, Value: !Ref Bucket}
+          - {Name: SNS_TOPIC_ARN, Value: !Ref AlertTopicArn}
+          - {Name: EMBEDDINGS_STORE, Value: !Ref EmbeddingsStore}
+          - {Name: CATALOGUE_URI, Value: !Ref CatalogueUri}
+          - {Name: EMBED_SPECS, Value: !Ref EmbedSpecs}
+          - {Name: EMBED_MAX_FAILURE_RATE, Value: !Ref MaxFailureRate}
+          # Fargate can report the host's CPU count; pin the thread pools to the task's vCPUs.
+          - {Name: TORCH_THREADS, Value: "4"}
+          - {Name: OMP_NUM_THREADS, Value: "4"}
+
+  EventsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - {Effect: Allow, Principal: {Service: events.amazonaws.com}, Action: "sts:AssumeRole"}
+      Policies:
+        - PolicyName: submit-embed
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: "batch:SubmitJob"
+                Resource:
+                  - !Ref JobQueueArn
+                  # by name, so the rule always uses the newest ACTIVE revision (aws.yml registers
+                  # a new revision with each pushed image)
+                  - !Sub "arn:aws:batch:${AWS::Region}:${AWS::AccountId}:job-definition/ie_supermarket_embed_job_definition*"
+
+  # Every dbt slot that exits 0 fires this, including quiet ones (up to 4 a day). The job is a cheap
+  # no-op when the catalogue has nothing new and exits 0 when another embed run holds the lock.
+  EmbedAfterDbtRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: supermarket-embed-after-dbt
+      State: !Ref TriggerState
+      EventPattern:
+        source: [aws.batch]
+        detail-type: ["Batch Job State Change"]
+        detail:
+          status: [SUCCEEDED]
+          jobName: [!Ref DbtJobName]
+          jobQueue: [!Ref JobQueueArn]
+          # the event carries the revisioned ARN (...:job-definition/<name>:<n>)
+          jobDefinition:
+            - prefix: !Sub "arn:aws:batch:${AWS::Region}:${AWS::AccountId}:job-definition/${DbtJobDefinitionName}:"
+      Targets:
+        - Id: submit-embed
+          Arn: !Ref JobQueueArn
+          RoleArn: !GetAtt EventsRole.Arn
+          BatchParameters:
+            JobDefinition: ie_supermarket_embed_job_definition
+            JobName: embed-daily
+          RetryPolicy: {MaximumRetryAttempts: 2, MaximumEventAgeInSeconds: 3600}
+
+Outputs:
+  JobDefinitionName:
+    Value: ie_supermarket_embed_job_definition
+  RuleName:
+    Value: !Ref EmbedAfterDbtRule

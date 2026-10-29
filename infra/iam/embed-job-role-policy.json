@@ -1,0 +1,41 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadCatalogue",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": [
+        "arn:aws:s3:::ie-supermarket-data/processed/*",
+        "arn:aws:s3:::ie-supermarket-data/processed-shadow/*"
+      ]
+    },
+    {
+      "Sid": "ReadWriteEmbeddingStore",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::ie-supermarket-data/ml/*"
+    },
+    {
+      "Sid": "DeleteOnlyTheLock",
+      "Effect": "Allow",
+      "Action": "s3:DeleteObject",
+      "Resource": "arn:aws:s3:::ie-supermarket-data/ml/_state/*"
+    },
+    {
+      "Sid": "ListForS3fs",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::ie-supermarket-data"
+    },
+    {
+      "Sid": "Alert",
+      "Effect": "Allow",
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:eu-west-1:557690579730:supermarket-scraper-alerts"
+    }
+  ]
+}
