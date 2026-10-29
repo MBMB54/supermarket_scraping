@@ -125,7 +125,7 @@ def test_landing_writes_one_parquet_partition_per_retailer_day(tmp_path):
 
 
 def test_landing_fails_loudly_when_the_partition_is_missing(tmp_path):
-    with pytest.raises(Exception, match="No files found"):
+    with pytest.raises(FileNotFoundError, match="no raw batches"):
         landing.land(connect(), "demo", "2026-01-01", str(tmp_path / "raw"), str(tmp_path / "out"))
 
 
