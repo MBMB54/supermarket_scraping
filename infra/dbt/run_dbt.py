@@ -179,7 +179,7 @@ def main() -> int:
             alert(f"dbt FAILED for {run_date}", "See the Batch job logs. Catalog was not updated.")
             return rc
         if should_maintain(run_date):
-            maintain(LOCAL_CATALOG)
+            print("maintenance deleted data files:", maintain(LOCAL_CATALOG))
         push(storage, LOCAL_CATALOG, run_date)  # the commit: only after a green build
         for retailer in ready:
             storage.put_bytes(built_key(run_date, retailer), b"")

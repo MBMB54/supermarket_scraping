@@ -375,3 +375,34 @@ def test_dbt_command_skips_absent_retailers_and_the_catalogue_export(monkeypatch
     run_dbt.run_dbt("2026-01-01", list(run_dbt.RETAILERS))
     cmd = seen["cmd"]
     assert "int_all_supermarket_products" not in cmd and "listing_min_rows" not in cmd[-1]
+
+
+def test_delete_data_files_refuses_paths_outside_the_lake(tmp_path):
+    root = str(tmp_path / "lake") + "/"
+    (tmp_path / "lake").mkdir()
+    inside, other = tmp_path / "lake" / "a.parquet", tmp_path / "other.parquet"
+    inside.write_bytes(b"x")
+    other.write_bytes(b"x")
+    with pytest.raises(RuntimeError, match="refusing to delete outside"):
+        lake.delete_data_files([str(inside), str(other)], root)
+    assert inside.exists() and other.exists()  # nothing was deleted
+    assert lake.delete_data_files([str(inside), str(tmp_path / "lake" / "gone.parquet")], root) == 2
+    assert not inside.exists() and other.exists()
+
+
+def test_delete_data_files_on_s3_deletes_by_key_without_duckdb(monkeypatch):
+    seen = {}
+
+    class FakeStorage:
+        def __init__(self, bucket):
+            seen["bucket"] = bucket
+
+        def delete_many(self, keys):
+            seen["keys"] = keys
+
+    monkeypatch.setattr(lake, "Storage", FakeStorage)
+    root = "s3://b/ducklake-shadow/"
+    assert lake.delete_data_files([root + "main/t/x.parquet"], root) == 1
+    assert seen == {"bucket": "b", "keys": ["ducklake-shadow/main/t/x.parquet"]}
+    with pytest.raises(RuntimeError):
+        lake.delete_data_files(["s3://b/ducklake/main/t/x.parquet"], root)  # the production lake

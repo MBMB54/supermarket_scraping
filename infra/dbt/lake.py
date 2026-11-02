@@ -71,19 +71,51 @@ def push(storage: Storage, local: Path, run_date: str) -> None:
     storage.put_bytes(f"{STATE_PREFIX}/archive/{run_date}/catalog.ducklake", body)
 
 
+def delete_data_files(paths: list[str], data_path: str) -> int:
+    """Delete DuckLake data files ourselves; returns how many were requested.
+
+    Refuses anything outside `data_path`, since these paths come from the catalog and an unexpected
+    one (a corrupted row, a different lake) must never reach a delete call.
+    """
+    root = data_path if data_path.endswith("/") else data_path + "/"
+    outside = [p for p in paths if not p.startswith(root)]
+    if outside:
+        raise RuntimeError(f"refusing to delete outside {root}: {outside[:3]}")
+    if root.startswith("s3://"):
+        bucket, _, _ = root[len("s3://") :].partition("/")
+        Storage(bucket=bucket).delete_many([p[len(f"s3://{bucket}/") :] for p in paths])
+    else:
+        for p in paths:
+            Path(p).unlink(missing_ok=True)
+    return len(paths)
+
+
 def maintain(
     catalog: Path, data_path: str = DATA_PATH, retention_days: int = SNAPSHOT_RETENTION_DAYS
-):
-    """Expire old snapshots, merge the one-file-per-day Parquet, delete files nothing references."""
+) -> int:
+    """Expire old snapshots, merge the one-small-file-per-day Parquet, delete unreferenced files.
+
+    Returns the number of data files deleted.
+    """
     con = connect()
     con.execute("INSTALL ducklake; LOAD ducklake")
     con.execute(f"ATTACH 'ducklake:{catalog}' AS lake (DATA_PATH '{data_path}')")
-    # older_than = 1 day on the deletes keeps files a concurrent reader could still be opening.
     for sql in (
         f"CALL ducklake_expire_snapshots('lake', older_than => now() - INTERVAL '{retention_days} days')",
         "CALL ducklake_merge_adjacent_files('lake')",
-        "CALL ducklake_cleanup_old_files('lake', older_than => now() - INTERVAL '1 day')",
-        "CALL ducklake_delete_orphaned_files('lake', older_than => now() - INTERVAL '1 day')",
     ):
         con.execute(sql)
+    # DuckLake's own cleanup crashes on S3 with DuckDB 2.0.0 (INTERNAL Error: Information loss on
+    # integer cast, inside httpfs S3FileSystem::RemoveFiles; reproduced on a scratch lake, fine on 1.5.6,
+    # still present in 2.0.1 dev builds). So ask what it WOULD delete (dry_run) and delete those objects
+    # ourselves. older_than = 1 day keeps files a concurrent reader could still be opening. The catalog's
+    # scheduled-for-deletion rows are not pruned, so already-deleted paths are listed (and re-deleted,
+    # harmlessly) each week; switch back to the real calls once DuckDB fixes RemoveFiles.
+    doomed = set()
+    for fn in ("ducklake_cleanup_old_files", "ducklake_delete_orphaned_files"):
+        listed = con.execute(
+            f"CALL {fn}('lake', older_than => now() - INTERVAL '1 day', dry_run => true)"
+        ).fetchall()
+        doomed.update(row[0] for row in listed)
     con.close()
+    return delete_data_files(sorted(doomed), data_path)
