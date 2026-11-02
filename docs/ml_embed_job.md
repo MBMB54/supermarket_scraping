@@ -61,11 +61,6 @@ harrier-title run). Batch job-name dedupe was not used; Batch allows duplicate n
 (c) **Degraded days.** `processed/` is only rewritten when all four retailers built, so a degraded
 day leaves the catalogue unchanged and the embed job finds nothing new. Fine.
 
-**Shadow week.** The shadow dbt schedule also produces SUCCEEDED events, and shadow writes
-`processed-shadow/`. Deploy with `TriggerState=DISABLED` and run by hand with
-`CatalogueUri=s3://ie-supermarket-data/processed-shadow/all_supermarket_products.parquet` (the role
-can read both prefixes), or enable the rule with that parameter. After cutover, redeploy with the
-default `processed/`.
 
 ## Measurements
 
@@ -93,7 +88,7 @@ gemma2-text 15-40 rows/s, harrier-title 10-25 rows/s.
 
 | work | estimate on 4 vCPU Fargate |
 |---|---|
-| daily increment (~90 new or changed titles; 559 rows differ between `processed/` of 10-23 and `processed-shadow/` of 10-29, 6 days) | download 30-90 s + load 10-30 s + embed 5-15 s per spec: about 3-5 min per run |
+| daily increment (~90 new or changed titles; 559 rows differed between the 10-23 and 10-29 catalogues, 6 days) | download 30-90 s + load 10-30 s + embed 5-15 s per spec: about 3-5 min per run |
 | quiet slot | 1-2 min (image pull + diff), model not loaded |
 | first harrier-title run (no table exists: 50,042 rows pending) | 35-85 min |
 | full 50k re-embed of gemma2-text | 20-55 min |
@@ -226,16 +221,15 @@ Run from the repo root with `AWS_REGION=eu-west-1`.
 2. **Deploy the stack with the trigger off.**
    `aws cloudformation deploy --template-file infra/embed-batch.yaml --stack-name supermarket-embed-batch --capabilities CAPABILITY_NAMED_IAM --parameter-overrides Image=<ECR URI> JobQueueArn=arn:aws:batch:eu-west-1:557690579730:job-queue/getting-started-fargate-job-queue ExecutionRoleArn=arn:aws:iam::557690579730:role/aws_batch_2 AlertTopicArn=arn:aws:sns:eu-west-1:557690579730:supermarket-scraper-alerts`.
    Risk: low; creates a role, a job definition, a disabled rule. `validate-template` passes.
-3. **Run `gemma2-text` alone against the real store** (`EMBED_SPECS=gemma2-text`, default catalogue or
-   the shadow one). The store already holds all 50,042 rows, so it should embed only the ~559 differing
-   rows (shadow catalogue) or 0. Check `_run_summary` and that no existing part changed. Risk: low; append-only
+3. **Run `gemma2-text` alone against the real store** (`EMBED_SPECS=gemma2-text`, default catalogue). The
+   store already holds all 50,042 rows, so it should embed only the rows that differ from the stored ones, or 0. Check `_run_summary` and that no existing part changed. Risk: low; append-only
    writes. If it re-embeds ~50k, the spec id changed: stop (the unit test guards this).
 4. **First `harrier-title` run** (the full 50,042 rows, ~35-85 min, ~$0.1-0.3). Record the real
    load/throughput/RSS from its summary and adjust the vCPU/timeout if needed. Risk: medium for cost/time only.
    Decision needed first (below).
 5. **Enable the trigger** (`TriggerState=ENABLED`, re-deploy). Watch the next dbt SUCCEEDED: a Batch job
    `embed-daily` should appear within a minute. Risk: low; worst case a failed job and an alert.
-   Do this only after the dbt cutover, or point `CatalogueUri` at `processed-shadow/` during the shadow week.
+   The dbt cutover is done (2026-11-02), so `processed/` is now written by the Batch job.
 
 Rollback: disable the rule; delete the stack; `ml/` tables are append-only and can simply be left.
 

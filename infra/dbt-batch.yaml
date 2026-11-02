@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
   Daily dbt build and raw compaction as AWS Batch Fargate jobs, triggered by EventBridge Scheduler.
-  Deployed 2026-10-27 as stack supermarket-dbt-batch (shadow prefixes). See
+  Deployed 2026-10-27 as stack supermarket-dbt-batch; on production prefixes since 2026-11-02. See
   docs/dbt_orchestration_plan.md. The alert topic comes from batch-alerts.yaml.
 
 Parameters:
@@ -27,7 +27,7 @@ Parameters:
     Type: String
     Default: DISABLED
     AllowedValues: [ENABLED, DISABLED]
-    Description: Deploys DISABLED. Enable for the shadow week (with shadow prefixes) and at cutover (after seed_lake.py).
+    Description: Deploys DISABLED. Enable only after seed_lake.py has created the lake (a run with no catalog refuses to start).
   CompactScheduleState:
     Type: String
     Default: DISABLED
@@ -45,15 +45,15 @@ Parameters:
   StatePrefix:
     Type: String
     Default: dbt/state
-    Description: "Production default. Shadow week: dbt/state-shadow (with the two parameters below)."
+    Description: "S3 prefix of the catalog, lock and built markers. Override (with the two parameters below) only to test without touching production state."
   LakeData:
     Type: String
     Default: s3://ie-supermarket-data/ducklake/
-    Description: "Shadow week: s3://ie-supermarket-data/ducklake-shadow/ (never a path under ducklake/)."
+    Description: "Where DuckLake writes its Parquet. A test lake must not sit under ducklake/: orphan cleanup on the production lake would delete it."
   ProcessedPrefix:
     Type: String
     Default: s3://ie-supermarket-data/processed
-    Description: "Shadow week: s3://ie-supermarket-data/processed-shadow (production feeds ml/embeddings.py)."
+    Description: "Where the product catalogue Parquet is written; production is processed/, which ml/embeddings.py reads."
 
 Resources:
   DbtJobRole:
@@ -77,14 +77,12 @@ Resources:
                   - !Sub "arn:aws:s3:::${Bucket}/ducklake/*"
                   - !Sub "arn:aws:s3:::${Bucket}/dbt/*"
                   - !Sub "arn:aws:s3:::${Bucket}/processed/*"
-                  - !Sub "arn:aws:s3:::${Bucket}/ducklake-shadow/*"
-                  - !Sub "arn:aws:s3:::${Bucket}/processed-shadow/*"
               - Effect: Allow
                 Action: "s3:ListBucket"
                 Resource: !Sub "arn:aws:s3:::${Bucket}"
                 Condition:
                   StringLike:
-                    "s3:prefix": ["raw/*", "landing/*", "ducklake/*", "dbt/*", "processed/*", "ducklake-shadow/*", "processed-shadow/*"]
+                    "s3:prefix": ["raw/*", "landing/*", "ducklake/*", "dbt/*", "processed/*"]
               - {Effect: Allow, Action: "sns:Publish", Resource: !Ref AlertTopicArn}
 
   DbtJobDefinition:

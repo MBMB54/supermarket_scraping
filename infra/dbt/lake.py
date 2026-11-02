@@ -16,8 +16,8 @@ from common import connect
 from scraper_common.config import BUCKET
 from scraper_common.storage import Storage
 
-# STATE_PREFIX/LAKE_DATA/PROCESSED_PREFIX are overridden together for the shadow run so it cannot
-# touch production state.
+# STATE_PREFIX/LAKE_DATA/PROCESSED_PREFIX are overridden together to run against a test lake without
+# touching production state.
 STATE_PREFIX = os.environ.get("STATE_PREFIX", "dbt/state")
 CATALOG_KEY = f"{STATE_PREFIX}/catalog.ducklake"
 LOCK_KEY = f"{STATE_PREFIX}/LOCK"

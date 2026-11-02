@@ -401,8 +401,8 @@ def test_delete_data_files_on_s3_deletes_by_key_without_duckdb(monkeypatch):
             seen["keys"] = keys
 
     monkeypatch.setattr(lake, "Storage", FakeStorage)
-    root = "s3://b/ducklake-shadow/"
+    root = "s3://b/ducklake-test/"
     assert lake.delete_data_files([root + "main/t/x.parquet"], root) == 1
-    assert seen == {"bucket": "b", "keys": ["ducklake-shadow/main/t/x.parquet"]}
+    assert seen == {"bucket": "b", "keys": ["ducklake-test/main/t/x.parquet"]}
     with pytest.raises(RuntimeError):
         lake.delete_data_files(["s3://b/ducklake/main/t/x.parquet"], root)  # the production lake

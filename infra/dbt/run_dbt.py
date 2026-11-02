@@ -5,7 +5,7 @@ Env: RUN_DATE (YYYY-MM-DD) or SCHEDULED_TIME (ISO, from EventBridge Scheduler's
 of the day (and alerts when the scrapes are still not ready) when FINAL_ATTEMPT=1 or its
 SCHEDULED_TIME hour is >= FINAL_HOUR_UTC (default 14); SNS_TOPIC_ARN (optional);
 MAINTAIN=1|0|auto (auto = Sundays); ALLOW_FRESH_LAKE=1 (permit a first run with no catalog); OUTPUT_DIR (keep state on local disk, for tests);
-STATE_PREFIX, LAKE_DATA, PROCESSED_PREFIX (together, for a shadow run; see lake.py).
+STATE_PREFIX, LAKE_DATA, PROCESSED_PREFIX (together, to test without touching production; see lake.py).
 
 Retailers are published independently. Each slot builds every retailer whose scrape is complete
 and passed its gate, and leaves the others out (a "degraded" day) instead of blocking them; a later

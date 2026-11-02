@@ -48,7 +48,7 @@ aws cloudformation delete-stack --stack-name supermarket-scraper-alerts
 - The local AWS CLI profile is the account root user; create a scoped IAM user/role for day-to-day use.
 
 
-# dbt Batch job (deployed as stack `supermarket-dbt-batch`, shadow mode)
+# dbt Batch job (deployed as stack `supermarket-dbt-batch`)
 
 `dbt-batch.yaml` defines the dbt and raw-compaction Batch job definitions, the dbt job role, and the
 EventBridge Scheduler slots; `iam/dbt-job-role-policy.json` is the same policy standalone and

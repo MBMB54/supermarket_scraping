@@ -25,7 +25,7 @@ graph TD
 
 - **Scraping** (live): per-retailer ID scripts and API scripts share `scraper_common/`, with a
   data-quality gate and a run summary per chunk.
-- **Transformation** (rolling out, currently in shadow mode): `dbt/` builds staging, intermediate and mart
+- **Transformation** (live): `dbt/` builds staging, intermediate and mart
   models; the daily price history lives in a DuckLake lakehouse (Parquet on S3 plus a small catalog).
 - **Analysis and ML**: `ml/`, `ml_common/` and `notebooks/` read the marts and the product catalogue.
 

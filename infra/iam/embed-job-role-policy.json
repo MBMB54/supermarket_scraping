@@ -6,8 +6,7 @@
       "Effect": "Allow",
       "Action": "s3:GetObject",
       "Resource": [
-        "arn:aws:s3:::ie-supermarket-data/processed/*",
-        "arn:aws:s3:::ie-supermarket-data/processed-shadow/*"
+        "arn:aws:s3:::ie-supermarket-data/processed/*"
       ]
     },
     {

@@ -19,9 +19,7 @@
         "arn:aws:s3:::ie-supermarket-data/landing/*",
         "arn:aws:s3:::ie-supermarket-data/ducklake/*",
         "arn:aws:s3:::ie-supermarket-data/dbt/*",
-        "arn:aws:s3:::ie-supermarket-data/processed/*",
-        "arn:aws:s3:::ie-supermarket-data/ducklake-shadow/*",
-        "arn:aws:s3:::ie-supermarket-data/processed-shadow/*"
+        "arn:aws:s3:::ie-supermarket-data/processed/*"
       ]
     },
     {
@@ -36,9 +34,7 @@
             "landing/*",
             "ducklake/*",
             "dbt/*",
-            "processed/*",
-            "ducklake-shadow/*",
-            "processed-shadow/*"
+            "processed/*"
           ]
         }
       }

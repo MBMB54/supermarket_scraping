@@ -25,7 +25,7 @@ Parameters:
   CatalogueUri:
     Type: String
     Default: s3://ie-supermarket-data/processed/all_supermarket_products.parquet
-    Description: "Shadow week: s3://ie-supermarket-data/processed-shadow/all_supermarket_products.parquet"
+    Description: "The catalogue the dbt job writes; embeddings are keyed to its rows."
   EmbedSpecs:
     Type: String
     Default: "gemma2-text,harrier-title"
@@ -63,7 +63,6 @@ Resources:
                 Action: "s3:GetObject"
                 Resource:
                   - !Sub "arn:aws:s3:::${Bucket}/processed/*"
-                  - !Sub "arn:aws:s3:::${Bucket}/processed-shadow/*"
               - Effect: Allow
                 Action: ["s3:GetObject", "s3:PutObject"]
                 Resource: !Sub "arn:aws:s3:::${Bucket}/ml/*"

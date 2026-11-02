@@ -46,7 +46,7 @@ The project collects the public prices of grocery products from four Irish super
     raw/{retailer}/{date}/{retailer}_raw_..._chunkN_batchNNNN.jsonl.gz   (the source of truth)
     raw/{retailer}/{date}/_run_summary_chunkN.json                       (gate result per chunk)
            |                                           |
-           | 14:00  summary-check Lambda [live]        | 11:30, 12:30, 13:30, 14:30  Scheduler [shadow: ENABLED]
+           | 14:00  summary-check Lambda [live]        | 11:30, 12:30, 13:30, 14:30  Scheduler [live]
            |  -> SNS email if a summary is missing/bad |  -> Batch job ie_supermarket_dbt_job_definition
            v                                           v
      SNS topic supermarket-scraper-alerts    precheck per retailer -> landing Parquet -> dbt build -> push catalog
@@ -62,7 +62,7 @@ The project collects the public prices of grocery products from four Irish super
                        consumers: ml/ (embeddings, agents, HF export), notebooks/, ad-hoc SQL
 ```
 
-**Live versus rollout, plainly.** The scraping half is live and has run daily for months (raw folders exist from 2026-02-01 for Tesco). The dbt Batch pipeline's CloudFormation stack `supermarket-dbt-batch` was created on 2026-10-27 with "shadow" storage prefixes (so it cannot touch production dbt state or the `processed/` file `ml/` reads). Three shadow days have been built on Batch and the dbt schedule is enabled in shadow mode; production cutover, raw compaction and the S3 lifecycle rules are still pending (section 5.8).
+**Live versus rollout, plainly.** The scraping half is live and has run daily for months (raw folders exist from 2026-02-01 for Tesco). The dbt Batch pipeline's CloudFormation stack `supermarket-dbt-batch` was created on 2026-10-27, ran on trial prefixes for a week, and has been live on the production prefixes (`dbt/state/`, `ducklake/`, `processed/`) since 2026-11-02. Raw compaction and the S3 lifecycle rules are live too (section 5.8).
 
 ---
 
@@ -79,7 +79,7 @@ Root: `/Users/brianbarry/supermarket_scraping` (GitHub repo `MBMB54/supermarket_
 | [scraper_common/](../scraper_common/) | Code shared by all scrapers: `config.py` (`RunConfig`, `chunk_slice`), `storage.py` (`Storage`), `http.py` (`request_with_retry`), `ids.py` (read and publish ID lists), `runner.py` (`run_scrape`), `quality.py` (gate), `storefront.py` (SuperValu/Dunnes client). Section 4.4. |
 | [lambda/](../lambda/) | `handler.py`, the function `supermarket_batch_scheduler` that submits the daily Batch jobs. |
 | [dbt/](../dbt/) | The dbt project `dbt_ie_supermarket_analytics`: `models/` (staging, intermediate, marts), `tests/`, `macros/`, `seeds/` (SuperValu taxonomy CSVs), `scripts/backfill.py`, `README.md`. Section 7. |
-| [infra/](../infra/) | AWS definitions: `batch-alerts.yaml` (alert stack, deployed), `dbt-batch.yaml` (dbt/compaction stack, deployed 2026-10-27 in shadow mode), `dbt/` (the dbt Batch job's Python entrypoints, Dockerfile, profiles, S3 lifecycle JSON), `iam/` (draft least-privilege policies, mostly not applied), `README.md`. |
+| [infra/](../infra/) | AWS definitions: `batch-alerts.yaml` (alert stack, deployed), `dbt-batch.yaml` (dbt/compaction stack, deployed 2026-10-27, on production prefixes since 2026-11-02), `dbt/` (the dbt Batch job's Python entrypoints, Dockerfile, profiles, S3 lifecycle JSON), `iam/` (draft least-privilege policies, mostly not applied), `README.md`. |
 | [ml/](../ml/) | Experiments run by hand: `embeddings.py` (title embeddings to `processed/embeddings/`), `agents.py` (a Pydantic AI search agent over the DB), `classify_orphan_products.py` and `apply_review_decisions.py` (SuperValu taxonomy work), `export_data_to_hf.py`, `download_images_bytes_hf.py` (superseded), `image_embeddings_hf.py`, `review_console.html`, `orphan_classifications.jsonl`. |
 | [ml_common/](../ml_common/) | A model-agnostic embedding framework: `specs.py` (frozen `EmbeddingSpec`), `diff.py` (embed only new/changed rows), `storage.py` (local, `s3://` or `hf://buckets/...`), `images.py`/`image_map.py` (incremental image downloader), `cli/` (`embed`, `images`). Design in [ml_framework.md](ml_framework.md). |
 | [docs/](.) | Design notes and investigations; index in section 12. |
@@ -304,7 +304,7 @@ aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMP
 
 - **Versioning: ENABLED** (`aws s3api get-bucket-versioning`). Overwriting or deleting an object keeps the old content as a hidden *noncurrent version* that still costs money. This matters because the scrapers rewrite checkpoint files after every batch and delete them at the end, and `ids/latest` is overwritten daily.
 - **Lifecycle configuration: none** (`NoSuchLifecycleConfiguration`). Nothing expires, nothing moves to cheaper storage. Drafts exist in [infra/dbt/](../infra/dbt/) (section 5.7).
-- Top-level prefixes today: `raw/`, `processed/`, `warehouse/`, `smoketest/`, `dbt/`, `ducklake-shadow/`. Full table with sizes in section 6.1.
+- Top-level prefixes today: `raw/`, `processed/`, `warehouse/`, `smoketest/`, `dbt/`, `ducklake/`, `landing/`. Full table with sizes in section 6.1.
 
 ### 5.3 ECR
 
@@ -366,7 +366,7 @@ Who receives the email is whatever address was given as `AlertEmail` at deploy t
 | `aws_batch` | Older, unused by current job definitions (**unverified**) | |
 | `aldi_scraper_lambda-role-9m23mie2` | Both `supermarket_batch_scheduler` and `aldi_scraper_lambda` | Basic execution + `AWSBatchFullAccess` + `AmazonS3FullAccess` per iam_setup.md. |
 | `supermarket-scraper-alerts-SummaryCheckRole-...` | Summary-check Lambda | Narrow, created by the alert stack. |
-| `supermarket-dbt-job-role` | dbt Batch job | Created 2026-10-27 by the dbt stack: read `raw/*`; read/write/delete `landing/*`, `ducklake/*`, `dbt/*`, `processed/*` (and the two shadow prefixes); `sns:Publish`. Cannot delete raw data. |
+| `supermarket-dbt-job-role` | dbt Batch job | Created 2026-10-27 by the dbt stack: read `raw/*`; read/write/delete `landing/*`, `ducklake/*`, `dbt/*`, `processed/*`; `sns:Publish`. Cannot delete raw data. |
 | `supermarket-dbt-batch-SchedulerRole-...` | EventBridge Scheduler | Allowed `batch:SubmitJob` on the queue and the two dbt job definitions. |
 | Service-linked roles (`AWSServiceRoleForBatch`, ECS, ...) | AWS itself | Ignore. |
 
@@ -380,19 +380,19 @@ State as updated late on 2026-10-27 (the rollout is in progress; re-run the chec
 |---|---|---|
 | Code (`infra/dbt/*.py`, `dbt/` changes, tests) | Committed and pushed (`8c3686c`, `d29a445`, `27fa673`, `bdc1d61`, `780ecb7`, `078b031`) | `git log` |
 | Image `docker-images:dbt-<sha>` | Built and pushed by the `build-dbt-image` job in `aws.yml` on every push | `aws ecr describe-images --repository-name docker-images` |
-| CloudFormation stack `supermarket-dbt-batch` | **Exists** (deployed 2026-10-27), in shadow mode | `aws cloudformation describe-stacks --stack-name supermarket-dbt-batch` |
-| Stack parameters | `StatePrefix=dbt/state-shadow`, `LakeData=s3://ie-supermarket-data/ducklake-shadow/`, `ProcessedPrefix=s3://ie-supermarket-data/processed-shadow`, `ExecutionRoleArn` and `ScraperJobRoleArn` = `aws_batch_2` | same command |
+| CloudFormation stack `supermarket-dbt-batch` | **Live** on the production prefixes since 2026-11-02 | `aws cloudformation describe-stacks --stack-name supermarket-dbt-batch` |
+| Stack parameters | `StatePrefix=dbt/state`, `LakeData=s3://ie-supermarket-data/ducklake/`, `ProcessedPrefix=s3://ie-supermarket-data/processed`, `ExecutionRoleArn` and `ScraperJobRoleArn` = `aws_batch_2`; pass the current image on each stack update, or CloudFormation re-registers the job definition with its original one | same command |
 | Job definitions `ie_supermarket_dbt_job_definition`, `ie_supermarket_compact_job_definition` | Registered; revision 2 uses the newest image (revision 1 was the first image, whose tests failed on missing fixtures) | `aws batch describe-job-definitions` |
-| Schedule `supermarket-dbt-daily` (`cron(30 11-14 * * ? *)`) | **ENABLED**, writes only to the shadow prefixes | `aws scheduler get-schedule --name supermarket-dbt-daily` |
+| Schedule `supermarket-dbt-daily` (`cron(30 11-14 * * ? *)`) | **ENABLED**, builds the production lake | `aws scheduler get-schedule --name supermarket-dbt-daily` |
 | Lambda `supermarket_dbt_built_check` + schedule `supermarket-dbt-built-check` (`cron(0 15 * * ? *)`) | **Deployed 2026-10-28**: emails `dbt MISSING for <date>: <retailers>` when `built/{date}/<retailer>` markers are absent after the last dbt slot. Dry run: invoke with `{"date":"YYYY-MM-DD","dry_run":true}` | `aws lambda get-function --function-name supermarket_dbt_built_check` |
 | Schedule `supermarket-raw-compaction-daily` (`cron(30 15 * * ? *)`) | **ENABLED** (dates 2-7 days old only; enabled after the backfill below) | `aws scheduler get-schedule --name supermarket-raw-compaction-daily` |
-| Shadow catalog and runs | Seeded from the local database; three days (2026-10-24, 25, 26) built by manual `submit-job` runs, 12 `dbt/state-shadow/built/...` markers; lake matches the local database up to 2026-10-23 with no duplicates | `aws s3 ls s3://ie-supermarket-data/dbt/state-shadow/ --recursive` |
-| Production state (`dbt/state/`, `ducklake/`) | **Do not exist yet** (cutover pending); `landing/` exists (shared, written by the shadow runs) | `aws s3 ls` |
-| `processed/all_supermarket_products.parquet` | Still last written by a local run; the shadow job writes `processed-shadow/` instead | `aws s3 ls` |
+| Production lake | Seeded 2026-11-02 from the local database (6,364,808 rows, through 2026-10-29); 2026-10-30..11-02 replayed with `RUN_DATE`; 166 days (2026-02-01..2026-11-02); history matches the local database exactly | `aws s3 ls s3://ie-supermarket-data/dbt/state/` |
+| Weekly maintenance | Works since 2026-11-02 (DuckDB 2.0.0's S3 delete crashes, so `lake.maintain()` deletes the files itself) | plan doc, "DuckDB 2.0" |
+| `processed/all_supermarket_products.parquet` | Written by the dbt Batch job (the last full day built), no longer by a local run | `aws s3 ls s3://ie-supermarket-data/processed/` |
 | S3 lifecycle rules | **Applied** (`infra/dbt/s3_lifecycle.json`: raw and landing to Glacier IR, noncurrent versions expire after 14 days (3 for `processed/`), delete markers and multipart uploads cleaned, catalog archive expires after 8 days) | `aws s3api get-bucket-lifecycle-configuration` |
-| Raw compaction | **Done** for every day up to 2026-10-25 (four Batch jobs, one per retailer, all exited 0): each `raw/{retailer}/{date}/` now holds the `_run_summary_chunk*.json` files plus one `compacted.jsonl.gz` (about 540 objects became about 6 per retailer-day). The originals are noncurrent versions, recoverable until the 14-day rule removes them (about 2026-11-10). A compacted day (2026-10-22) rebuilt through the shadow job matched the local database exactly | `aws s3 ls s3://ie-supermarket-data/raw/tesco/2026-10-22/` |
+| Raw compaction | **Done** for every day up to 2026-10-25 (four Batch jobs, one per retailer, all exited 0): each `raw/{retailer}/{date}/` now holds the `_run_summary_chunk*.json` files plus one `compacted.jsonl.gz` (about 540 objects became about 6 per retailer-day). The originals are noncurrent versions, recoverable until the 14-day rule removes them (about 2026-11-10). A compacted day (2026-10-22) rebuilt through the dbt job matched the local database exactly | `aws s3 ls s3://ie-supermarket-data/raw/tesco/2026-10-22/` |
 
-The first manual run of the first image failed at one dbt test because the fixture files had never been committed (the root `.gitignore` excludes `*.jsonl`); `780ecb7` fixed that. The plan's **rollout order** (shadow week, then cutover after `seed_lake.py`; the compaction backfill and lifecycle rules are done) is in [dbt_orchestration_plan.md](dbt_orchestration_plan.md).
+The first manual run of the first image failed at one dbt test because the fixture files had never been committed (the root `.gitignore` excludes `*.jsonl`); `780ecb7` fixed that. The plan's **rollout order** (shadow week, cutover, compaction backfill and lifecycle rules, all done) is in [dbt_orchestration_plan.md](dbt_orchestration_plan.md).
 
 The Scheduler `Input` format is now verified: the 14:30 UTC slot on 2026-10-27 fired by itself, passed `SCHEDULED_TIME`, and the job built all four retailers for that day (`dbt OK`). The 11:30, 12:30 and 13:30 slots did not exist yet that day (the schedule was enabled at about 14:20).
 
@@ -425,14 +425,13 @@ Sizes are current-version bytes from `aws s3 ls --recursive --summarize` on 2026
 | `raw/tesco/debug/` | Error screenshots (`*.png`) from the Tesco ID crawl | `tesco_ids.py` | humans | Forever | |
 | `raw/dunnes/ids/excluded/` | IDs dropped when `ids/latest` was rebuilt from raw | `dunnes_ids_from_raw.py` | humans | | |
 | `landing/{retailer}/scraped_date={date}/data.parquet` | **Future.** One zstd Parquet per retailer-day, the same table dbt would get by reading raw JSON (about 0.65x its size). A derived cache; rerunning overwrites it. | `infra/dbt/landing.py` (inside the dbt job) | dbt when `use_landing=true` | Rebuildable from raw | does not exist yet |
-| `ducklake/` (production) / `ducklake-shadow/` (shadow) | **DuckLake** data: Parquet files of the marts under `main/<table>/`. Never write there by hand. | dbt Batch job | DuckLake readers | Cleaned by weekly maintenance | shadow only so far |
-| `dbt/state/catalog.ducklake` (production) / `dbt/state-shadow/catalog.ducklake` | The DuckLake **catalog**: a small (~4 MB) DuckDB file listing tables, files and snapshots. Pushing it is the "commit". | dbt job, `seed_lake.py` | dbt job | Overwritten each run | shadow only |
-| `dbt/state*/archive/{date}/catalog.ducklake` | A dated copy of the catalog for rollback | dbt job | humans | 8 days by the draft lifecycle rule | shadow `archive/seed/` |
+| `ducklake/` | **DuckLake** data: Parquet files of the marts under `main/<table>/`. Never write there by hand. | dbt Batch job | DuckLake readers | Cleaned by weekly maintenance | live |
+| `dbt/state/catalog.ducklake` | The DuckLake **catalog**: a small (~4 MB) DuckDB file listing tables, files and snapshots. Pushing it is the "commit". | dbt job, `seed_lake.py` | dbt job | Overwritten each run | live |
+| `dbt/state/archive/{date}/catalog.ducklake` | A dated copy of the catalog for rollback | dbt job | humans | 8 days by the lifecycle rule | live (`archive/seed/` is the first seed) |
 | `dbt/state*/LOCK` | Mutual-exclusion lock object (content = run date). Stale after 30 min. | dbt job | dbt job | transient | |
 | `dbt/state*/built/{date}/{retailer}` | Empty marker: that retailer-day was built and committed | dbt job | dbt job | Forever | |
 | `processed/all_supermarket_products.parquet` | Slim catalogue (`id, supermarket, title, title_cleaned, image_url`, rows with a title). Overwritten by each full dbt build. | dbt model `int_all_supermarket_products` | `ml/embeddings.py`, `ml_common` (`CATALOGUE_URI` default) | Overwritten | 4.9 MB |
 | `processed/embeddings/{model-slug}/product_title_embeddings.parquet` | Title vectors for three models (`microsoft-harrier-oss-v1-270m`, `jinaai-jina-embeddings-v5-text-small`, `sentence-transformers-all-MiniLM-L6-v2`) | `ml/embeddings.py` | dbt `int_product_title_embeddings`, `ml/agents.py` | Overwritten | 53-88 MB each |
-| `processed-shadow/` | Shadow-week replacement for `processed/` | dbt Batch job (shadow) | humans | Delete after the shadow week | not yet present |
 | `warehouse/tesco_raw.db` | A 319 MB DuckDB file from February 2026, last modified 2026-02-12. Purpose not documented in the repo; treat as legacy (**unverified**). | (old manual run) | nothing found | Forever | 319 MB |
 | `smoketest/tesco429/...` | Output of the Tesco 429 experiments (88 objects, 10 MB). Safe to delete when the incident is closed. | experiments | humans | Forever | 10 MB |
 
@@ -526,7 +525,7 @@ Batch backfill (once the pipeline is live): submit the dbt job with `RUN_DATE=<d
 
 ### 7.5 Seeding the lake (one-off)
 
-`fct_product_price_daily` exists only in the local DB, so the lake must start from a copy of it: [infra/dbt/seed_lake.py](../infra/dbt/seed_lake.py) copies that table into a fresh DuckLake catalog and pushes the catalog, refusing to run if a catalog already exists. The same environment variables (`STATE_PREFIX`, `LAKE_DATA`) choose shadow versus production. The dbt job refuses to start with no catalog (`ALLOW_FRESH_LAKE=1` overrides) so history is never silently forked.
+`fct_product_price_daily` exists only in the local DB, so the lake must start from a copy of it: [infra/dbt/seed_lake.py](../infra/dbt/seed_lake.py) copies that table into a fresh DuckLake catalog and pushes the catalog, refusing to run if a catalog already exists. The same environment variables (`STATE_PREFIX`, `LAKE_DATA`) choose which lake a run uses (production by default), so a test lake can be used without touching production. The dbt job refuses to start with no catalog (`ALLOW_FRESH_LAKE=1` overrides) so history is never silently forked.
 
 ---
 
@@ -544,7 +543,7 @@ Batch backfill (once the pipeline is live): submit the dbt job with `RUN_DATE=<d
 | 08:16-08:59 | SuperValu chunks (12-15 min each; starts staggered as capacity frees) | live |
 | 08:01-09:07 | Dunnes chunks (5-6 min each; some start later, ~08:53-09:00, probably waiting for capacity; **unverified**) | live |
 | 10:49 | Last Tesco summary file is written; day's raw data complete | live |
-| 11:30, 12:30, 13:30, 14:30 | EventBridge Scheduler slots submit `ie_supermarket_dbt_job_definition` (14:30 is the "final" slot) | built; **dbt slots ENABLED (shadow)** |
+| 11:30, 12:30, 13:30, 14:30 | EventBridge Scheduler slots submit `ie_supermarket_dbt_job_definition` (14:30 is the "final" slot) | **live** |
 | 14:00 | `supermarket_summary_check` Lambda emails if anything is missing or failed | live |
 | 15:00 | `supermarket_dbt_built_check` Lambda emails if any retailer has no built marker for today | **ENABLED** |
 | 15:30 | Raw compaction job (dates 2-7 days old only) | **ENABLED** |
@@ -824,14 +823,14 @@ Preconditions: understand the hazard in 4.3 (duplicates).
     --job-definition ie_supermarket_dbt_job_definition \
     --container-overrides '{"environment":[{"name":"RUN_DATE","value":"2026-10-26"},{"name":"FINAL_ATTEMPT","value":"1"}]}'
   ```
-  `FINAL_ATTEMPT=1` makes it report instead of waiting. A day that is already fully built exits 0 quietly (delete `dbt/state/built/<date>/<retailer>` to force a rebuild of a retailer). Add `{"name":"MAINTAIN","value":"1"}` to force maintenance. **Until the cutover (section 5.8), the stack is in shadow mode (`dbt/state-shadow`), so a manual run only updates the shadow lake.**
+  `FINAL_ATTEMPT=1` makes it report instead of waiting. A day that is already fully built exits 0 quietly (delete `dbt/state/built/<date>/<retailer>` to force a rebuild of a retailer). Add `{"name":"MAINTAIN","value":"1"}` to force maintenance. A manual run updates the production lake.
 - **Order does not matter** for the price tables (delete+insert by date), so late backfills are safe.
 
 ### 10.6 dbt job problems
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `NOT RUN ... state locked by run '...' for X.Xh` | A previous job is still running, or was killed before releasing the lock | If under 30 min, wait. After 30 min the next run takes the lock over by itself. To clear it by hand once you are sure nothing runs: `aws s3 rm s3://ie-supermarket-data/dbt/state/LOCK` (shadow: `dbt/state-shadow/LOCK`). |
+| `NOT RUN ... state locked by run '...' for X.Xh` | A previous job is still running, or was killed before releasing the lock | If under 30 min, wait. After 30 min the next run takes the lock over by itself. To clear it by hand once you are sure nothing runs: `aws s3 rm s3://ie-supermarket-data/dbt/state/LOCK`. |
 | `NOT RUN ... no catalog` | Lake not seeded, or `dbt/state/catalog.ducklake` deleted | Seed with `infra/dbt/seed_lake.py` (7.5) or restore a catalog from `dbt/state/archive/<date>/` (valid ~7 days). Never set `ALLOW_FRESH_LAKE=1` on production unless you mean to start an empty history. |
 | `dbt FAILED`, log shows a failed test | Data problem (9.4) | Fix/rescrape, resubmit with `RUN_DATE`. |
 | Job exits at once, "nothing ready yet" in log | Scrapes not finished (non-final slot) | Normal; a later slot retries. |
@@ -945,7 +944,7 @@ Measured numbers are from [dbt_orchestration_plan.md](dbt_orchestration_plan.md)
 | **Gate** | The pass/fail check at the end of a chunk. |
 | **Stale ID** | An ID in our list that the retailer no longer serves. |
 | **Degraded day** | A day built without one or more retailers. |
-| **Shadow week** | A trial period where the Batch pipeline writes to `*-shadow` prefixes while production is untouched. |
+| **Cutover** | Switching the Batch pipeline from its trial prefixes to the production ones (done 2026-11-02). |
 | **Cutover** | Switching the production schedule on after seeding `dbt/state/`. |
 | **Embedding** | A numeric vector representing a title or image, for similarity search (`ml/`, `ml_common/`). |
 | **uv** | The Python package/environment manager used here. |

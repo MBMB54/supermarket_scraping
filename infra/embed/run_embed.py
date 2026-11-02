@@ -6,8 +6,7 @@ and only calls the embedder for pending rows, and the model is loaded on that fi
 no-op run never imports torch or downloads a model.
 
 Env: EMBEDDINGS_STORE (required, `s3://bucket/ml`; unset would silently write to the container's
-disk), CATALOGUE_URI (default the dbt-written processed parquet; shadow week:
-s3://.../processed-shadow/all_supermarket_products.parquet), EMBED_SPECS (comma list of text specs,
+disk), CATALOGUE_URI (default the dbt-written processed parquet), EMBED_SPECS (comma list of text specs,
 default `gemma2-text,harrier-title`), CHUNK_ROWS (rows per appended part, default 1024),
 EMBED_MAX_FAILURE_RATE (default 0.05) with EMBED_MIN_FAILURES (default 3): a spec fails when both
 are exceeded, TORCH_THREADS (default CPU count; Fargate may report the host's CPUs, so the job
