@@ -41,6 +41,9 @@ vars:
   # {prefix}/embeddings/<spec_id>/{part-*.parquet,manifest.json}. Only specs copied here are visible
   # to dbt; specs that live only in the private Hugging Face bucket are not.
   embeddings_store_prefix: "s3://ie-supermarket-data/ml"
+  # Targets whose post-hook builds the BM25 index on dim_product_search (macro build_search_index).
+  # Local DuckDB-file targets only: `batch` has an in-memory main DB and a DuckLake catalog.
+  fts_targets: [dev, prod]
   # Per-spec fixed-size relations (macro embedding_view, one models/embeddings/emb_<key>.sql each):
   # key -> {spec_id, dim}. dim must equal the stored vector length (assert_embedding_dims checks it).
   embedding_specs:
@@ -58,6 +61,10 @@ models:
       # DuckLake catalog attached as `lake`; staging/intermediate stay in the in-memory main DB.
       # Local targets keep everything in their single DuckDB file.
       +database: "{{ 'lake' if target.name == 'batch' else target.database }}"
+
+    search:
+      +materialized: table
+      +tags: ["search"]
 
     embeddings:
       +materialized: table

@@ -112,3 +112,14 @@
 {% docs col_embedded_at %}Timestamp (UTC) the embedding was computed. A multi-vector item's vectors share one value.{% enddocs %}
 
 {% docs col_emb_model_id %}Hugging Face model id the spec embeds with.{% enddocs %}
+
+
+{# Product search (models/search/). #}
+
+{% docs dim_product_search %}
+One row per product (`supermarket`, `id`) from `fct_product_listings` (same run, same row count), shaped for search: text fields, dietary flags and basic price fields in one table. Keyword search uses a BM25 index (`fts_main_dim_product_search`) built over `title_cleaned`, `brand` and `category_1..4` by a post-hook on the local `dev`/`prod` targets only; it does not exist on the scheduled `batch` target. Vector search joins `emb_<spec>` / `fct_embeddings` on `(supermarket, id)` at query time; no embeddings are stored here.
+
+**Dietary flags: NULL means unknown, not false.** Coverage differs by retailer: SuperValu fills every flag; Tesco and Dunnes fill vegan, vegetarian, gluten free, organic, low fat, kosher and halal but not dairy free, sugar free, no added sugar or diabetic friendly; Aldi fills none and has ingredients for only about a quarter of its products. Filter with `flag IS TRUE` to require a positive signal. `flag IS NOT TRUE` mixes "not suitable" with "unknown"; never read it as "contains".
+{% enddocs %}
+
+{% docs search_product_key %}Surrogate key `supermarket || ':' || id`, unique per row. The single-column key the BM25 index needs (`match_bm25(product_key, ...)`) and the handle `bm25_search` returns.{% enddocs %}
