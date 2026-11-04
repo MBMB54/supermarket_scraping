@@ -115,8 +115,11 @@ on pull requests) that was never installed under `.github/workflows/`.
   `docs/dunnes_ids_investigation.md` (a third, small search-endpoint probe was proposed, not run).
 - **IAM is parked** (`docs/iam_setup.md`). The Tesco weekly launchd job (`scripts/launchd/`) uses the default AWS
   profile; set `AWS_PROFILE` in the wrapper script if the default changes.
-- **Legacy objects to remove by hand** (agents cannot run drops): S3 `processed/embeddings/*/product_title_embeddings.parquet`
-  (three models, 53-88 MB each, no readers left in the repo); in the local DB, after the agent migration is
-  verified, `int_product_title_embeddings` (with index `hnsw_idx`) and the FTS schema `fts_main_int_supervalu`
-  (exact statements are in `docs/agent_migration_plan.md`).
+- **Legacy objects.** Done 2026-11-04: the three S3 files `processed/embeddings/*/product_title_embeddings.parquet`
+  were deleted (the bucket is versioned; the `processed/` noncurrent-expiry rule keeps them recoverable for
+  about 3 days), and the local DB lost the stray FTS schema `fts_main_tesco_table` and the empty `flock_config`
+  schema (a verified backup `~/supermarket_backups/supermarket_data_20261104.db` was taken first). Still
+  present because `ml/agents.py` queries them until it is migrated: table `int_product_title_embeddings`
+  (index `hnsw_idx`) and schema `fts_main_int_supervalu`. Drop them after the migration is verified; the exact
+  statements, including loading `vss` first, are in `docs/agent_migration_plan.md` section 10.
 - A `notebooks/embeddings.ipynb` working copy is deliberately left uncommitted.

@@ -12,7 +12,7 @@ Verification notes come from a read-only inspection of `supermarket_data.db` (Du
 |---|---|
 | New tables exist in the local DB | `dim_product_search`, the schema `fts_main_dim_product_search` and the macro `bm25_search` do **not** exist in `supermarket_data.db` yet. `emb_gemma2_text` (50,042 rows, `FLOAT[768]`), `fct_embeddings`, `dim_embedding_specs`, `fct_product_listings`, `fct_price_history` and `fct_product_price_daily` do. Pre-flight step P3 must build the search table and index. |
 | `rel.fetchmany()`/`.fetchone()` break on 2.0 and must be replaced at ~196/~312 | Already fixed: line 196 is `rel.limit(25).fetchall()` and line 312 is `rel.limit(21).fetchall()`. The only remaining fetch is `.fetchone()` at line 467, called on `cursor().execute(...)` (a connection/cursor object, not a relation). Verified: `duckdb.connect().cursor().execute('select 1').fetchone()` returns `(1,)` on 2.0.0, and `con.sql(...)` relations have neither `fetchone` nor `fetchmany`. Rule for new code: never call fetch methods on a `.sql()` relation, use `.limit(n).fetchall()` or `execute(...).fetchall()`. |
-| One legacy FTS schema | Two: `fts_main_int_supervalu` and `fts_main_tesco_table` (the latter has no backing table, a stray from earlier experiments). Both are in the DROP list (section 10) as user decisions. |
+| One legacy FTS schema | One remains, `fts_main_int_supervalu`. A stray `fts_main_tesco_table` (no backing table) and the empty `flock_config` schema were already dropped on 2026-11-04. |
 | vss/HNSW may be needed | Not needed. A brute-force `array_cosine_similarity` scan over all 50,042 vectors in `emb_gemma2_text` took 0.14 s. Read-only reads also work without `vss` loaded even though `hnsw_idx` is in the file. The new agent loads neither `vss` nor creates secrets. |
 | Allergen matching on "free text lists" | Locally the lists are element lists (`['Barley','Wheat']`, `['Milk']`), not one comma string (the dbt README example `['Milk, gluten']` is stale). Substring matching on `array_to_string(list, ',')` handles both shapes. |
 | `coalesce(contains_allergens, [])` in the README example is a safe exclusion filter | It is **not**: it treats unknown as "none", so an unknown product passes a "no milk" filter. Tesco has 11,237 NULL allergen lists out of 20,020 products. See rule R2. |
@@ -481,7 +481,7 @@ Use `read_only=True` or a copy from `~/supermarket_backups/` (dated copies exist
   5. After every future `dbt build` of `dim_product_search` under Fusion, the post-hook recreates the 1.5.5 index: re-run step 3. This should become a one-line script (`ml/reindex_search.py`, ~15 lines) if the user rebuilds often.
 - **P5. DB freshness.** `SELECT supermarket, max(scraped_date) FROM fct_product_price_daily GROUP BY 1` -> 2026-10-29 for all four (as of 2026-11-04 the local DB is 6 days behind; the scheduled AWS job does **not** feed the local DB and does not build the BM25 index). To refresh locally: `dbt/scripts/backfill.py --start <date> --end <date> ...` then `dbtf build` (see `dbt/scripts/backfill.py` docstring and `dbt/README.md`), or use a published `search.duckdb` if one exists. `docs/next_steps.md` does not exist at the time of writing; if it exists when you read this, follow it for the published-file option. After a refresh, redo P3/P4 and compare: `SELECT count(*) FROM fct_product_listings l ANTI JOIN emb_gemma2_text e USING (supermarket, id)` (473 today) shows how many new products lack vectors until the embedding job and a dbt rebuild run.
 - **P6. Encoder download.** `uv run --group ml-embed python -c "from ml_common.embedders import SentenceTransformerEmbedder as E; from ml_common.specs import get_spec; s=get_spec('gemma2-text'); print(s.spec_id); print(E(s).encode_queries(['gluten free bread']).shape)"` -> `268dad232ccc02bc` and `(1, 768)`. The model (`google/embeddinggemma-2`) may be gated or need `HF_TOKEN`; if it fails, ask the user to authenticate (the `hf-cli` skill covers it). BM25-only mode works without it.
-- **P7. Legacy still present (expected).** `SELECT index_name FROM duckdb_indexes()` -> `hnsw_idx`; `int_product_title_embeddings` has 40,228 rows; schemas `fts_main_int_supervalu`, `fts_main_tesco_table`. Do not touch them; see section 10.
+- **P7. Legacy still present (expected).** `SELECT index_name FROM duckdb_indexes()` -> `hnsw_idx`; `int_product_title_embeddings` has 40,228 rows; schema `fts_main_int_supervalu` (the stray `fts_main_tesco_table` and `flock_config` were dropped on 2026-11-04). Do not touch them; see section 10.
 - **P8. Sanity of the semantic side.** In Python, embed "bread" with the fake-free real encoder and run `SELECT supermarket, id, array_cosine_similarity(embedding, $v::FLOAT[768]) s FROM emb_gemma2_text ORDER BY s DESC LIMIT 5`; the top rows should be breads. If they are not, the query/doc prefixes or spec do not match the stored vectors; stop.
 - **P9. Table macros accept bound parameters** (verified 2026-11-04 on 2.0.0 in memory; re-run on the real DB): `con.execute("SELECT count(*) FROM bm25_search(?)", ["it's bread"]).fetchone()` executes without error. If it ever fails, call `fts_main_dim_product_search.match_bm25(product_key, $q)` directly in a subquery instead of the macro.
 
@@ -493,7 +493,6 @@ Do this only after the smoke list passes. The objects (verified present on 2026-
 
 - Table `int_product_title_embeddings` (40,228 rows) with index `hnsw_idx` (`USING HNSW (title_embedding) WITH (metric = 'cosine')`).
 - Schema `fts_main_int_supervalu` (FTS index over table `int_supervalu`).
-- Schema `fts_main_tesco_table` (FTS schema whose table `tesco_table` no longer exists).
 - Views/tables possibly retired by the same change set; user decision: `int_supervalu` (a stale **BASE TABLE** locally while the other `int_*` are views), `int_aldi`, `int_tesco`, `int_dunnes`, `int_all_supermarket_products` (view), `stg_*`. Ask before dropping any: dbt rebuilds the int/stg models, and `fct_product_listings` is built from them. The brief names only the embedding table, the HNSW index and the two FTS schemas.
 
 Run in a notebook (not by an agent), with the DB closed elsewhere. The index must be dropped with `vss` loaded:
@@ -507,7 +506,6 @@ DROP TABLE int_product_title_embeddings;
 INSTALL fts; LOAD fts;
 PRAGMA drop_fts_index('int_supervalu');       -- preferred; fallback if it errors:
 -- DROP SCHEMA fts_main_int_supervalu CASCADE;
-DROP SCHEMA IF EXISTS fts_main_tesco_table CASCADE;   -- stray, no backing table (user decision)
 
 CHECKPOINT;
 ```
@@ -543,7 +541,7 @@ Code cleanup (the implementing session, step 7): remove `bi_encoder`, harrier re
 - Q1. Does an empty allergen list (`[]`) mean "none declared" or "not parsed"? (Tesco: 7,734 `[]` vs 11,237 NULL.) Until answered the agent treats `[]` as none declared but caveats.
 - Q2. Product-page URL patterns for tesco, dunnes and aldi: not present in the repo (`stg_*` only carry image URLs). Provide verified templates, or accept answers without links for those retailers. (Do not guess.)
 - Q3. Keep stored SuperValu image URLs (`zoom/`, `detail/`) as-is, or restore the `cell/` thumbnail rewrite after the user confirms those URLs resolve?
-- Q4. Which retired objects besides `int_product_title_embeddings`/`hnsw_idx`/the two FTS schemas should be dropped (`int_supervalu` base table, `int_all_supermarket_products` view, others)?
+- Q4. Which retired objects besides `int_product_title_embeddings`/`hnsw_idx`/`fts_main_int_supervalu` should be dropped (`int_supervalu` base table, `int_all_supermarket_products` view, others)?
 - Q5. Should I add the small `ml/reindex_search.py` (2.0 FTS rebuild) so the index is rebuilt by 2.0 after each Fusion build?
 - Q6. Is the intended deployment still `agent.to_web` served locally? A published `search.duckdb` or the Batch-built data changes the DB path and refresh story (section 11).
 - Q7. Should the agent state when the data is stale (data date older than N days vs today)? Default proposed: warn when more than 3 days.
