@@ -94,7 +94,7 @@ Root: `/Users/brianbarry/supermarket_scraping` (GitHub repo `MBMB54/supermarket_
 | `.github/workflows/` | `ci.yml` (lint + tests) and `aws.yml` (build/deploy on push to `local_implementation`). |
 | `.agents/skills/` (`.claude/skills` symlinks to it) | Agent skills `check-jobs` and `submit-jobs`. `.claude/agents/code-reviewer.md` is a reviewer sub-agent that applies [REVIEW.md](REVIEW.md). |
 | `supermarket_data.db` | Local DuckDB file, 648 MB, git-ignored (`*.db`). The only place today where the marts and embeddings tables live. Section 6.2. |
-| `lk/`, `logs/`, `tesco_sample_output.txt` | `lk/` is an empty directory; `logs/` holds local dbt logs; the text file is a sample Tesco response. Not part of the pipeline. |
+| `lk/`, `logs/` | `lk/` is an empty directory; `logs/` holds local dbt logs. Not part of the pipeline. |
 | [README.md](../README.md) | **Stale**: describes a UK/Ocado/Athena/QuickSight design that does not exist. Ignore it; use this guide. |
 
 ---

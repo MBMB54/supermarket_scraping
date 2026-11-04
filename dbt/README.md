@@ -69,7 +69,7 @@ The scheduled Batch job runs a plain `dbt build`; it needs `--exclude tag:embedd
 
 `dim_product_search` is one row per `(supermarket, id)` from `fct_product_listings` (same run, same row count): title/brand/category/ingredient text, the dietary flags, allergens and basic price fields, plus a surrogate `product_key` (`supermarket || ':' || id`). It is the single table an agent or notebook filters and keyword-searches; it holds no embeddings (join `emb_<spec>` / `fct_embeddings` on `(supermarket, id)` at query time).
 
-**Dietary flags: NULL means unknown, not false.** SuperValu fills every flag; Tesco and Dunnes lack `is_dairy_free`, `is_sugar_free`, `has_no_added_sugar`, `is_diabetic_friendly`; Aldi has none and ingredients for ~28% of products. Use `flag IS TRUE` to require a positive signal. Allergen lists are retailer text (`['Milk, gluten']`), so match with a substring (`ILIKE '%milk%'`), and `contains_allergens IS NULL` means unknown.
+**Dietary flags: NULL means unknown, not false.** SuperValu fills every flag; Tesco and Dunnes lack `is_dairy_free`, `is_sugar_free`, `has_no_added_sugar`, `is_diabetic_friendly`; Aldi has none and ingredients for ~28% of products. Use `flag IS TRUE` to require a positive signal. Allergen lists are retailer text (element lists such as `['Barley','Wheat']`, `['Milk']`; wording varies by retailer), so match with a substring on `array_to_string(list, ',')` (`ILIKE '%milk%'`), and `contains_allergens IS NULL` means unknown: never treat it as allergen-free.
 
 **BM25 index.** A post-hook (macro `build_search_index`) runs `PRAGMA create_fts_index('dim_product_search', 'product_key', 'title_cleaned', 'brand', 'category_1'..'category_4', overwrite = 1)` after every build and (re)creates the table macro `bm25_search(query_text)`. DuckDB's fts has no incremental update, and dbt recreates the table, so the whole index is rebuilt each time (about 1 s for 50k rows on Fusion/DuckDB 1.5.5, 0.6 s on 2.0.0; the table itself is ~0.1 s). It runs only for targets in var `fts_targets` (`[dev, prod]`, the local DuckDB-file targets); on `batch` (in-memory main DB plus DuckLake, which cannot hold indexes) the hook is `SELECT 1`. Fusion's bundled driver runs `INSTALL fts; LOAD fts` from the hook without `fts` in the profile's `extensions:` (the extension must be cached in `~/.duckdb/extensions/`, or the machine online, on the first build). Index fields are `title_cleaned`, `brand` and the category levels; ingredients and descriptions are deliberately not indexed, because in a combined index their length swamps the title signal ('vegan sausages' then returns supplements whose ingredients say vegan). Use `ingredients ILIKE`, or the dietary flags, for ingredient questions. A stale or missing index fails `assert_search_index_fresh`.
 
@@ -79,7 +79,8 @@ SELECT p.supermarket, p.title, p.price, round(b.score, 2) AS score
 FROM bm25_search('gluten free bread') AS b
 JOIN dim_product_search AS p USING (product_key)
 WHERE p.is_gluten_free IS TRUE                                              -- positive signal only
-  AND NOT array_to_string(coalesce(p.contains_allergens, []), ',') ILIKE '%milk%'
+  AND p.contains_allergens IS NOT NULL                                      -- unknown allergens are NOT milk-free
+  AND NOT array_to_string(p.contains_allergens, ',') ILIKE '%milk%'
   AND p.price < 4
 ORDER BY b.score DESC LIMIT 10;
 ```
