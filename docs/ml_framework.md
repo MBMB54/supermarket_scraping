@@ -1,6 +1,6 @@
 # ML embedding framework (`ml_common/`)
 
-Implements steps 1-3 of `docs/ml_audit.md`, plus the CLI and the image store (`fetch`/`seed`). Nothing here writes to S3, Hugging Face or the DB unless you point `--store` at them.
+Spec-driven incremental embeddings, a CLI, and the image store (`fetch`/`seed`). Nothing here writes to S3, Hugging Face or the DB unless you point `--store` at them.
 
 ## Store layout
 
@@ -36,8 +36,6 @@ uv run python -m ml_common.cli.images fetch --store ./embedding_store --catalogu
 ```
 
 `--store` goes before the subcommand. The catalogue needs `id, supermarket, image_url` (dbt `int_all_supermarket_products` now carries `image_url`).
-
-`ml/download_images_bytes_hf.py` (images inside HF dataset parquet shards, re-downloads everything every run) is superseded by `fetch` and `seed`; it is kept only until the store is seeded.
 
 S3 stays the source of truth for scraped and dbt data. The store is the working area for derived artefacts.
 
@@ -79,15 +77,19 @@ hf jobs run --flavor cpu-upgrade --timeout 4h --secrets HF_TOKEN \
 
 A PEP 723 header cannot import the package by itself, so none is provided.
 
-## Not done yet (deliberately)
+## Status (2026-11-04)
 
-- HF bucket creation, uploading anything to HF, the scheduled job.
-- Pushing the dbt catalogue to HF after each build (dbt now emits `image_url`; `image_sha256` is joined from the image map at embed time, not in dbt).
-- Running `fetch` against the full catalogue and `seed` against all legacy shards (only small test runs so far: 200 seed rows, 200 fetched images).
-- Hardening: blob writes are not atomic on a local disk (a kill mid-write could leave a truncated blob that `exists` then trusts); map compaction.
-- Porting `ml/embeddings.py` (writes the file dbt reads) and `ml/agents.py` (search, FTS, query encoder) onto the package (audit steps 4-7).
-- An attempt counter for repeatedly failing items, and compaction of old/stale rows.
-- Quality evaluation: the probe results in the report are an eyeball check only; build an in-domain eval before choosing a model.
+Done: private bucket `brianbarry97/supermarket-embeddings` (catalogue pushed by hand, legacy images seeded, all 49,952 catalogue images fetched and mapped); embedding tables for `gemma2-text` (copied to `s3://ie-supermarket-data/ml`, read by dbt), `harrier-title` (same S3 store), and `gemma2-image-t140` / `gemma2-image-text-t140` (HF bucket only; dbt cannot read them). The legacy title-embedding path (`ml/embeddings.py`, `int_product_title_embeddings`) is retired.
+
+Open: the scheduled/event-driven text embed job (`docs/ml_embed_job.md`), an automated catalogue push, migrating `ml/agents.py` onto the dbt search/embedding tables (`docs/agent_migration_plan.md`), image-decode speed-up for large re-embeds, blob write atomicity and map/part compaction, and an in-domain evaluation (public benchmark scores are dominated by documents and VQA, not packshots). Roadmap and decisions: `docs/next_steps.md`.
+
+## Reference notes (researched 2026-10-23; verify before relying on them)
+
+- **HF Buckets** are mutable, non-versioned object storage on Xet (chunk dedup; deletes are permanent; no PRs or viewer). `hf buckets create --region` needs the Team plan. Any HF tool reads `hf://buckets/user/bucket/path` through `HfFileSystem`; Jobs mount them with `-v hf://buckets/user/b:/mnt[:ro]`. Bucket webhooks exist but are capped at 1,000 triggers per 24 h, and a triggered run gets neither the job's volumes nor secrets, so prefer a scheduled Job. Private storage is about $18/TB/month with egress included.
+- **DuckDB and HF.** DuckDB 1.x cannot read `hf://buckets/`; 2.x reads them natively but read-only. The `huggingface` community extension (functions `hf_files`, `hf_scan`, `hf_profile`) only builds for DuckDB 2.0.0 and only reads dataset repos. Neither writes. Use `HfFileSystem` / `ml_common.Storage` for writes.
+- **Vector search at this scale.** No vector database is needed: brute-force `array_cosine_distance` over 100k x 768 floats took about 0.075-0.1 s per query (numpy 6-11 ms); HNSW (`vss`) queries took 5-7 ms but the build takes about 30 s per 100k vectors, persistence is experimental (needs `vss` loaded and `hnsw_enable_experimental_persistence`; a file holding an HNSW index cannot be written without `vss` loaded) and DuckLake cannot hold indexes. Revisit around 500k-1M vectors.
+- **DuckDB FTS.** `create_fts_index` is a full rebuild (no incremental update). An index built on one DuckDB version should be rebuilt by the version that serves it: a 1.5-built index ran 40-100x slower on 2.0 until rebuilt.
+- **Model licences.** `google/embeddinggemma-2` (Apache-2.0, text+image+video+audio, 768-d, Matryoshka 128-768), `Qwen/Qwen3-VL-Embedding-2B` (Apache-2.0, 2048-d), `microsoft/harrier-oss-v1-270m` (MIT, 640-d). All jina v5 models and jina-clip-v2 are CC-BY-NC-4.0 (non-commercial). `gemma2-text` embeds titles at about 110/s on the Mac and 37-113/s on 4 CPU threads; `gemma2-image` runs 0.6-0.7 img/s at 280 vision tokens on the Mac, about 3.4 img/s on an A10G small (decode-bound).
 
 ## embeddinggemma-2 on a 16 GB M-series Mac (probe, 200 Tesco packshots, 2026-10-23)
 
@@ -117,4 +119,4 @@ embeddings/<spec_id>/part-*.parquet one table per spec, keyed by content_key
 - The catalogue is the list of products (with `image_url`, `title_cleaned`); it is overwritten with the latest dbt output so jobs always diff against what exists now, and the dated copies allow replay.
 - `image_map` links products to image hashes. It is separate from `images/` because many products share one blob and because a product's URL can change; it records failures and attempts so retries are bounded.
 - Each embedding spec gets its own table so models and settings never mix. Rows carry `(id, supermarket, content_key)`: join to the catalogue on `(supermarket, id)` for the product, and to the image map via `image_sha256 = content_key` (image specs) for the picture. A changed title or image gives a new `content_key`, so only that row is recomputed; readers take `latest_ok`.
-- Buckets are mutable and Xet-deduplicated with free egress (`docs/ml_hf_research.md`); S3 stays the system of record for scraped and dbt data. Fetch, seed and embed are the same CLIs locally and in Jobs.
+- Buckets are mutable and Xet-deduplicated with free egress (see the reference notes below); S3 stays the system of record for scraped and dbt data. Fetch, seed and embed are the same CLIs locally and in Jobs.

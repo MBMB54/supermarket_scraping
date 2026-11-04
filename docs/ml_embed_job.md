@@ -90,7 +90,7 @@ gemma2-text 15-40 rows/s, harrier-title 10-25 rows/s.
 |---|---|
 | daily increment (~90 new or changed titles; 559 rows differed between the 10-23 and 10-29 catalogues, 6 days) | download 30-90 s + load 10-30 s + embed 5-15 s per spec: about 3-5 min per run |
 | quiet slot | 1-2 min (image pull + diff), model not loaded |
-| first harrier-title run (no table exists: 50,042 rows pending) | 35-85 min |
+| first harrier-title run on Fargate (its table already holds 49,976 rows from the 2026-10-29 local run, so only rows added since are pending) | a normal increment: 3-5 min |
 | full 50k re-embed of gemma2-text | 20-55 min |
 
 Sizing: peak RSS ~2 GB, and 8 GB is Fargate's minimum for 4 vCPU, so the job definition is 4 vCPU / 8192 MB
@@ -102,8 +102,8 @@ run (deploy step 4) gives the real ones in `_run_summary`.**
 ### Costs (eu-west-1 list prices from memory, verify; queue uses Fargate Spot)
 
 4 vCPU + 8 GB is about $0.20/h on demand and about $0.06/h on Spot. No-op slot ~2 min: <$0.01. Increment
-run ~5 min: ~$0.02. Four events a day, mostly no-ops: ~$0.05-0.10/day, **~$1-3/month**. First harrier run
-~$0.1-0.3 once. ECR: ~1 GB image, ~$0.10/month per retained tag (the repo has 139 images and no lifecycle policy).
+run ~5 min: ~$0.02. Four events a day, mostly no-ops: ~$0.05-0.10/day, **~$1-3/month**. A full harrier re-embed (only if its spec changes)
+~$0.1-0.3. ECR: ~1 GB image, ~$0.10/month per retained tag (the repo has 139 images and no lifecycle policy).
 
 ## Decision: download models at start, do not bake them
 
@@ -224,9 +224,8 @@ Run from the repo root with `AWS_REGION=eu-west-1`.
 3. **Run `gemma2-text` alone against the real store** (`EMBED_SPECS=gemma2-text`, default catalogue). The
    store already holds all 50,042 rows, so it should embed only the rows that differ from the stored ones, or 0. Check `_run_summary` and that no existing part changed. Risk: low; append-only
    writes. If it re-embeds ~50k, the spec id changed: stop (the unit test guards this).
-4. **First `harrier-title` run** (the full 50,042 rows, ~35-85 min, ~$0.1-0.3). Record the real
-   load/throughput/RSS from its summary and adjust the vCPU/timeout if needed. Risk: medium for cost/time only.
-   Decision needed first (below).
+4. **First `harrier-title` run** (incremental: its table was filled locally on 2026-10-29). Record the real
+   load/throughput/RSS from its summary and adjust the vCPU/timeout if needed. Risk: low.
 5. **Enable the trigger** (`TriggerState=ENABLED`, re-deploy). Watch the next dbt SUCCEEDED: a Batch job
    `embed-daily` should appear within a minute. Risk: low; worst case a failed job and an alert.
    The dbt cutover is done (2026-11-02), so `processed/` is now written by the Batch job.
@@ -245,5 +244,6 @@ Rollback: disable the rule; delete the stack; `ml/` tables are append-only and c
   `s3:prefix` condition would deny and then fall into `create_bucket`. Verified with
   `iam simulate-custom-policy` (ml/ read-write allowed; processed/ write, raw/ read and ml/embeddings delete denied).
 - Persistent per-row errors below the failure threshold are retried daily and stay quiet.
-- The legacy `processed/embeddings/<slug>/product_title_embeddings.parquet` that dbt and `ml/agents.py`
-  read is still produced only by `ml/embeddings.py`; this job does not replace it.
+- The legacy `processed/embeddings/<slug>/product_title_embeddings.parquet` files are retired (the producer
+  `ml/embeddings.py` and the dbt model `int_product_title_embeddings` are deleted); `harrier-title` now
+  lives in the `ml_common` store and this job keeps it current.

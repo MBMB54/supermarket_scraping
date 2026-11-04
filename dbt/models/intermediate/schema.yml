@@ -740,7 +740,8 @@ models:
   - name: int_all_supermarket_products
     description: >
       Slim id / title / title_cleaned / image_url extract of fct_product_listings (rows with a title only),
-      written to Parquet under the parquet_output_prefix var for the embedding pipeline. Name predates
+      written to Parquet under the parquet_output_prefix var: the catalogue the ml_common embedding
+      framework and the embed job read. Name predates
       the marts layer; it is an output, not an intermediate.
     columns:
       - name: id
@@ -753,21 +754,3 @@ models:
         description: "{{ doc('col_title_cleaned') }}"
       - name: image_url
         description: "{{ doc('col_image_url') }}"
-
-  - name: int_product_title_embeddings
-    description: >
-      Title embeddings precomputed by ml/embeddings.py and read back from S3 (path keyed by the
-      embedding_model var). Not computed in dbt.
-    columns:
-      - name: id
-        description: "{{ doc('col_id') }}"
-      - name: supermarket
-        description: "{{ doc('col_supermarket') }}"
-      - name: title
-        description: "{{ doc('col_title') }}"
-      - name: title_embedding
-        description: Title embedding vector (640 dimensions for the default model).
-      - name: embedding_model
-        description: Slug of the model that produced the embedding.
-      - name: embedded_at
-        description: Timestamp the embedding was computed.

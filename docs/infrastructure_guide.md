@@ -80,7 +80,7 @@ Root: `/Users/brianbarry/supermarket_scraping` (GitHub repo `MBMB54/supermarket_
 | [lambda/](../lambda/) | `handler.py`, the function `supermarket_batch_scheduler` that submits the daily Batch jobs. |
 | [dbt/](../dbt/) | The dbt project `dbt_ie_supermarket_analytics`: `models/` (staging, intermediate, marts), `tests/`, `macros/`, `seeds/` (SuperValu taxonomy CSVs), `scripts/backfill.py`, `README.md`. Section 7. |
 | [infra/](../infra/) | AWS definitions: `batch-alerts.yaml` (alert stack, deployed), `dbt-batch.yaml` (dbt/compaction stack, deployed 2026-10-27, on production prefixes since 2026-11-02), `dbt/` (the dbt Batch job's Python entrypoints, Dockerfile, profiles, S3 lifecycle JSON), `iam/` (draft least-privilege policies, mostly not applied), `README.md`. |
-| [ml/](../ml/) | Experiments run by hand: `embeddings.py` (title embeddings to `processed/embeddings/`), `agents.py` (a Pydantic AI search agent over the DB), `classify_orphan_products.py` and `apply_review_decisions.py` (SuperValu taxonomy work), `export_data_to_hf.py`, `download_images_bytes_hf.py` (superseded), `image_embeddings_hf.py`, `review_console.html`, `orphan_classifications.jsonl`. |
+| [ml/](../ml/) | Run by hand: `agents.py` (a Pydantic AI search agent over the DB; migration to the dbt search/embedding tables is planned in `docs/agent_migration_plan.md`), `classify_orphan_products.py` and `apply_review_decisions.py` (SuperValu taxonomy work), `review_console.html`, `orphan_classifications.jsonl`. The embedding framework lives in `ml_common/`. |
 | [ml_common/](../ml_common/) | A model-agnostic embedding framework: `specs.py` (frozen `EmbeddingSpec`), `diff.py` (embed only new/changed rows), `storage.py` (local, `s3://` or `hf://buckets/...`), `images.py`/`image_map.py` (incremental image downloader), `cli/` (`embed`, `images`). Design in [ml_framework.md](ml_framework.md). |
 | [docs/](.) | Design notes and investigations; index in section 12. |
 | [tests/](../tests/) | pytest suites (section 9.1). |
@@ -197,7 +197,7 @@ dbtf build --project-dir dbt --vars '{run_date: 2026-10-26, parquet_output_prefi
 dbtf test  --project-dir dbt --select "test_type:unit"        # unit tests (Fusion only, see 9.3)
 ```
 
-Always pass `run_date` (it selects the raw partition `raw/{retailer}/{run_date}/` and stamps `scraped_date`) and **override `parquet_output_prefix` with a local directory when experimenting**: otherwise `int_all_supermarket_products` overwrites the production file `s3://ie-supermarket-data/processed/all_supermarket_products.parquet` that `ml/embeddings.py` reads. Do not pass `--static-analysis strict` (it fails on `list_filter(json_keys(...))`, a Fusion bug); the default works.
+Always pass `run_date` (it selects the raw partition `raw/{retailer}/{run_date}/` and stamps `scraped_date`) and **override `parquet_output_prefix` with a local directory when experimenting**: otherwise `int_all_supermarket_products` overwrites the production catalogue file `s3://ie-supermarket-data/processed/all_supermarket_products.parquet` that `ml_common` and the embed job read. Do not pass `--static-analysis strict` (it fails on `list_filter(json_keys(...))`, a Fusion bug); the default works.
 
 **B. dbt-core in a Python 3.12 virtualenv (what the Batch job uses).** Needed for the `batch` target (DuckLake). The dbt-core stack does not run on Python 3.14.
 
@@ -430,8 +430,8 @@ Sizes are current-version bytes from `aws s3 ls --recursive --summarize` on 2026
 | `dbt/state/archive/{date}/catalog.ducklake` | A dated copy of the catalog for rollback | dbt job | humans | 8 days by the lifecycle rule | live (`archive/seed/` is the first seed) |
 | `dbt/state*/LOCK` | Mutual-exclusion lock object (content = run date). Stale after 30 min. | dbt job | dbt job | transient | |
 | `dbt/state*/built/{date}/{retailer}` | Empty marker: that retailer-day was built and committed | dbt job | dbt job | Forever | |
-| `processed/all_supermarket_products.parquet` | Slim catalogue (`id, supermarket, title, title_cleaned, image_url`, rows with a title). Overwritten by each full dbt build. | dbt model `int_all_supermarket_products` | `ml/embeddings.py`, `ml_common` (`CATALOGUE_URI` default) | Overwritten | 4.9 MB |
-| `processed/embeddings/{model-slug}/product_title_embeddings.parquet` | Title vectors for three models (`microsoft-harrier-oss-v1-270m`, `jinaai-jina-embeddings-v5-text-small`, `sentence-transformers-all-MiniLM-L6-v2`) | `ml/embeddings.py` | dbt `int_product_title_embeddings`, `ml/agents.py` | Overwritten | 53-88 MB each |
+| `processed/all_supermarket_products.parquet` | Slim catalogue (`id, supermarket, title, title_cleaned, image_url`, rows with a title). Overwritten by each full dbt build. | dbt model `int_all_supermarket_products` | `ml_common` (`CATALOGUE_URI` default), the embed job | Overwritten | 4.9 MB |
+| `processed/embeddings/{model-slug}/product_title_embeddings.parquet` | **Retired** legacy title vectors for three models; nothing in the repo reads or writes them. Safe to delete by hand. | n/a | n/a | n/a | 53-88 MB each |
 | `warehouse/tesco_raw.db` | A 319 MB DuckDB file from February 2026, last modified 2026-02-12. Purpose not documented in the repo; treat as legacy (**unverified**). | (old manual run) | nothing found | Forever | 319 MB |
 | `smoketest/tesco429/...` | Output of the Tesco 429 experiments (88 objects, 10 MB). Safe to delete when the incident is closed. | experiments | humans | Forever | 10 MB |
 
@@ -441,7 +441,7 @@ Raw date folders start 2026-02-01 (Tesco), 2026-02-05 (SuperValu earliest listed
 
 | File | What | Notes |
 |---|---|---|
-| `supermarket_data.db` | DuckDB database used by `dbtf` `dev`/`prod` targets. Tables: `fct_product_price_daily` (6.07 M rows, 2026-02-01 to 2026-10-23: Tesco 2.19 M, SuperValu 1.72 M, Dunnes 1.55 M, Aldi 0.61 M), `fct_price_history`, `fct_product_listings`, `int_supervalu`, `int_product_title_embeddings`, `backfill_stats`, the three SuperValu seeds; `stg_*` and other `int_*` are views. | The **only complete copy of price history** until the Batch pipeline is cut over; `fct_product_price_daily` is the one table that cannot be rebuilt by replaying raw days (several Tesco days failed their gate). Last loaded day: 2026-10-23. Back it up before big runs: `cp supermarket_data.db ~/supermarket_backups/supermarket_data_$(date +%Y%m%d).db`. Backups from 2026-10-09 and 2026-10-20 exist in `~/supermarket_backups/`. |
+| `supermarket_data.db` | DuckDB database used by `dbtf` `dev`/`prod` targets. Tables: `fct_product_price_daily` (6.07 M rows, 2026-02-01 to 2026-10-23: Tesco 2.19 M, SuperValu 1.72 M, Dunnes 1.55 M, Aldi 0.61 M), `fct_price_history`, `fct_product_listings`, `int_supervalu`, `backfill_stats`, the three SuperValu seeds; `stg_*` and other `int_*` are views. | The **only complete copy of price history** until the Batch pipeline is cut over; `fct_product_price_daily` is the one table that cannot be rebuilt by replaying raw days (several Tesco days failed their gate). Last loaded day: 2026-10-23. Back it up before big runs: `cp supermarket_data.db ~/supermarket_backups/supermarket_data_$(date +%Y%m%d).db`. Backups from 2026-10-09 and 2026-10-20 exist in `~/supermarket_backups/`. |
 | `~/.dbt/profiles.yml` | dbt profile for local runs | outside the repo |
 | `~/Library/Logs/supermarket/` | Tesco ID refresh logs | Mac only |
 | `dbt/target/`, `dbt/logs/`, `logs/` | dbt artifacts and logs | git-ignored |
@@ -460,7 +460,6 @@ Project: [dbt/dbt_project.yml](../dbt/dbt_project.yml), profile name `dbt_ie_sup
 | **Staging** | `stg_aldi`, `stg_tesco`, `stg_dunnes`, `stg_supervalu` | view | One row per raw record, renamed and typed. All four drop stale-ID errors (`is_stale_id_error`); genuine fetch failures stay so tests can see them. |
 | **Intermediate** | `int_aldi`, `int_tesco`, `int_dunnes`, `int_supervalu` | views (`int_supervalu` is a table) | Business logic on an identical **46-column schema** in the same order so they can be `UNION ALL`ed. Normalised text (`title`, `brand`, `title_cleaned`), parsed prices and pack sizes, unit price normalised to per kg / litre / metre / each, promotion fields, allergens and dietary flags. A retailer lacking a field emits an explicitly typed NULL. |
 | | `int_all_supermarket_products` | `external` (writes Parquet) | Slim `id, supermarket, title, title_cleaned, image_url` export of `fct_product_listings` to `{parquet_output_prefix}/all_supermarket_products.parquet`. The name predates the marts layer; it is an output, not an intermediate. |
-| | `int_product_title_embeddings` | table | Reads title embeddings back from `{embeddings_input_prefix}/embeddings/{embedding_model}/product_title_embeddings.parquet` (computed by `ml/embeddings.py`, not in dbt). Not part of the Batch job's useful output. |
 | **Marts** | `fct_product_listings` | table, contract enforced | All four retailers unioned: one row per product per run. Keeps one row per `(supermarket, id)`, preferring a priced row. |
 | | `fct_product_price_daily` | incremental, `delete+insert` | One row per `(supermarket, id, scraped_date)` with price fields; rows with NULL price are excluded. |
 | | `fct_price_history` | table, contract enforced | Price versions derived from the daily table. |
@@ -485,8 +484,6 @@ Macros ([dbt/macros/](../dbt/macros/)): `normalize_text`, `clean_title` (strips 
 | `retailers` | `[tesco, dunnes, supervalu, aldi]` | Retailers built this run. Cross-retailer models and tests loop over it. A **degraded day** narrows it. |
 | `listing_min_rows` | 30000 | Floor for `fct_product_listings`; lowered on a degraded day to the sum of the present retailers' minimums (tesco 5000, dunnes 3000, supervalu 5000, aldi 1500). |
 | `parquet_output_prefix` | `s3://ie-supermarket-data/processed` | Where `int_all_supermarket_products` writes. **Override for local tests.** |
-| `embeddings_input_prefix` | same | Where embeddings are read from. |
-| `embedding_model` | `microsoft-harrier-oss-v1-270m` | Embedding table slug. |
 | `active_grace_days` | see above | Per-retailer grace. |
 | `fixtures_dir` | `dbt/tests/fixtures` | Used by one singular test. |
 
@@ -671,7 +668,7 @@ Built-in dbt tests also used: `unique`, `not_null`, `accepted_values`, `relation
 | `unit_normalised`: `accepted_values` {kg, l, m, each} | **warn** |
 | `scraped_date`: `not_null` | error |
 
-(I read the full block for `int_tesco` and the same key lines for the others; the column set varies slightly per retailer. `int_all_supermarket_products` and `int_product_title_embeddings` have no tests.)
+(I read the full block for `int_tesco` and the same key lines for the others; the column set varies slightly per retailer. `int_all_supermarket_products` has no tests.)
 
 **Mart tests** ([marts/schema.yml](../dbt/models/marts/schema.yml)):
 
@@ -966,7 +963,9 @@ Measured numbers are from [dbt_orchestration_plan.md](dbt_orchestration_plan.md)
 | [iam_setup.md](iam_setup.md) | Current IAM reality and the least-privilege plan |
 | [infra/README.md](../infra/README.md) | Alert stack apply/test/remove commands |
 | [REVIEW.md](REVIEW.md) | Review checklist for scraper/infra changes |
-| [ml_framework.md](ml_framework.md), [ml_audit.md](ml_audit.md), [ml_hf_research.md](ml_hf_research.md) | Embedding framework design, audit of `ml/`, Hugging Face storage research |
-| [duckdb2_test.md](duckdb2_test.md) | Why DuckDB 2.0 is not adopted yet |
+| [ml_framework.md](ml_framework.md) | Embedding framework design, store layout, status and Hugging Face / DuckDB reference notes |
+| [ml_embed_job.md](ml_embed_job.md) | Drafted (not deployed) AWS Batch text-embedding job chained after the dbt build |
+| [agent_migration_plan.md](agent_migration_plan.md) | Plan to move `ml/agents.py` onto the dbt search/embedding tables |
+| [next_steps.md](next_steps.md) | Open decisions and ordered plan for the next session, including the fresh-backfill sequence |
 | [taxonomy-rationale/](taxonomy-rationale/README.md) | SuperValu taxonomy design and per-department rationale |
 | [.agents/skills/check-jobs/SKILL.md](../.agents/skills/check-jobs/SKILL.md), [submit-jobs](../.agents/skills/submit-jobs/SKILL.md) | Agent-run job status and submission recipes |

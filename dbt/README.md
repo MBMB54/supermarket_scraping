@@ -5,7 +5,7 @@ Transforms the scraped retailer data in S3 with dbt + DuckDB. Layers:
 - `staging/` `stg_<retailer>`: rename and cast raw records, one row per record (views).
 - `intermediate/` `int_<retailer>`: business logic on a shared 46-column contract (views; SuperValu is a table).
 - `marts/`: `fct_product_listings` (all retailers, one row per product per run), `fct_product_price_daily` (append-only daily prices, incremental) and `fct_price_history` (price versions derived from the daily facts).
-- `int_all_supermarket_products` writes Parquet for `ml/embeddings.py`; `int_product_title_embeddings` reads the embeddings back.
+- `int_all_supermarket_products` writes the catalogue Parquet (`processed/all_supermarket_products.parquet`) that the `ml_common` embedding framework reads; embeddings come back into dbt through `models/embeddings/` (see below).
 - `seeds/`: SuperValu taxonomy. `macros/`: shared logic (units, price parsing, promotions, allergens, dietary flags, text cleaning, run_date).
 
 ## Running dbt (Fusion)
@@ -35,8 +35,7 @@ change this: the failures are in Fusion's parser/type inference, not in how JSON
 - `run_date` (YYYY-MM-DD): raw partition read (`raw/{retailer}/{run_date}/`) and the `scraped_date` stamped on rows. Defaults to today (UTC) when omitted; always pass it for scheduled, backfill or rerun builds, since a rerun after midnight UTC would otherwise read the wrong day.
 - `use_landing` (default false): read the one-file Parquet copy `{landing_prefix}/{retailer}/scraped_date={run_date}/data.parquet` that `infra/dbt/landing.py` writes, instead of the raw gzipped JSONL. The Batch job sets it; local runs and `scripts/backfill.py` read raw. `landing_prefix` defaults to `s3://ie-supermarket-data/landing`.
 - `retailers` (default all four): retailers built this run. Models and tests that span retailers loop over it; the scheduled job narrows it on a degraded day (and lowers `listing_min_rows`, default 30000), and backfills pass only retailers with a raw partition.
-- `parquet_output_prefix`: where dbt writes Parquet (default `s3://ie-supermarket-data/processed`); override to test.
-- `embeddings_input_prefix`: where dbt reads the legacy `int_product_title_embeddings` input (default same prefix).
+- `parquet_output_prefix`: where `int_all_supermarket_products` writes the catalogue Parquet (default `s3://ie-supermarket-data/processed`; read by `ml_common` and the embed job); override with a local directory to test.
 - `embeddings_store_prefix` (default `s3://ie-supermarket-data/ml`): root of the ml_common embedding store read by `models/embeddings/`. `embedding_specs`: per-spec fixed-size relations to generate (`key -> {spec_id, dim}`).
 
 ## Embeddings (`models/embeddings/`, tag `embeddings`)

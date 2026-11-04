@@ -53,7 +53,7 @@ Parameters:
   ProcessedPrefix:
     Type: String
     Default: s3://ie-supermarket-data/processed
-    Description: "Where the product catalogue Parquet is written; production is processed/, which ml/embeddings.py reads."
+    Description: "Where the product catalogue Parquet is written; production is processed/, the catalogue the ml_common embedding framework reads."
 
 Resources:
   DbtJobRole:
