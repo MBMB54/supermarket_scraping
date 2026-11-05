@@ -107,6 +107,13 @@ on pull requests) that was never installed under `.github/workflows/`.
 
 ## 4. Watch list and manual cleanup
 
+- **Incident 2026-11-05 (resolved by an image rebuild).** All four dbt slots failed because the production
+  dbt image (built 2026-11-02) still contained `int_product_title_embeddings`, whose input file had been
+  deleted on 2026-11-04 (the retirement commits did not trigger an image build). Lesson: after removing a
+  model or an S3 input the scheduled job reads, rebuild and deploy the dbt image **before** deleting the
+  data; the job fails closed (catalog untouched) on any model error. Check `max(built/<date>)` in
+  `dbt/state/built/` after any change.
+
 - **Sunday 2026-11-08**: first weekly DuckLake maintenance on the production lake, using the workaround that
   deletes expired data files itself (commit `c6dfe44`; DuckDB 2.0.0's S3 delete crashes). Check the four
   slots that day and the alert mail.
